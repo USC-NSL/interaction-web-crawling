@@ -17,14 +17,14 @@
 !/interaction-corpus/tools/serve.py
 
 # ---- Explorer, plus the screener modules it imports ----
+# tools/ is re-included whole, not file by file. A per-file allowlist silently drops
+# every module added afterwards, which is how blocking.py - imported by explore.py -
+# was left out of the first commit and made the tree unrunnable.
 !/page-screener/
 /page-screener/*
 !/page-screener/requirements.txt
+!/page-screener/README.md
 !/page-screener/tools/
-/page-screener/tools/*
-!/page-screener/tools/explore.py
-!/page-screener/tools/explore_acceptance.py
-!/page-screener/tools/screen.py
 
 # ---- Never commit, even inside allowed directories ----
 __pycache__/
@@ -32,3 +32,8 @@ __pycache__/
 .DS_Store
 **/logs/
 **/out/
+# Caches, including Brave's filter lists that tools/sync_brave_lists.py copies out of
+# a crawl profile: ~9 MB of third-party lists, recreatable from any crawl profile, and
+# whose component ids, versions and SHA-256s are recorded in every explorer result.
+/page-screener/cache/
+/page-screener/cache/brave-lists/

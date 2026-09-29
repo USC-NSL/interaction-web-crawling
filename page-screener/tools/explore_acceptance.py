@@ -71,8 +71,11 @@ def main() -> int:
     pages = [p for p in manifest["pages"] if not args.only or p["id"] in args.only]
 
     if not args.analyse_only:
+        # serve.py is stdlib-only, so a fresh clone with no corpus venv still works.
+        corpus_python = CORPUS / ".venv" / "bin" / "python"
+        python = str(corpus_python) if corpus_python.is_file() else sys.executable
         server = subprocess.Popen(
-            [str(CORPUS / ".venv" / "bin" / "python"), str(CORPUS / "tools" / "serve.py"),
+            [python, str(CORPUS / "tools" / "serve.py"),
              "--port", str(args.port), "--log", str(log_path), "--reset"],
             stdout=open(out / "corpus-server.out", "w"), stderr=subprocess.STDOUT)
         try:

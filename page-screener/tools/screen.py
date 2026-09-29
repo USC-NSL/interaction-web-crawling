@@ -1485,10 +1485,14 @@ def main() -> int:
     if args.block_ads:
         global BLOCKER
         import blocking
-        BLOCKER = blocking.Blocker(PKG_ROOT / "cache" / "adblock", USER_AGENT)
-        print("ad/tracker blocking ON: "
-              + ", ".join(f"{n} ({i['rules']} rules)" for n, i in BLOCKER.list_info.items()),
-              flush=True)
+        try:
+            BLOCKER = blocking.Blocker()
+        except blocking.BraveListsMissing as exc:
+            print(exc)
+            return 2
+        print("ad/tracker blocking ON (Brave's own lists): "
+              + ", ".join(f"{n} {i['version']} ({i['rules']} rules)"
+                          for n, i in BLOCKER.list_info.items()), flush=True)
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -1347,8 +1347,13 @@ def main() -> int:
                     help="seconds to sit idle before baseline, recording the page's own "
                          "timer-driven requests (default 30)")
     ap.add_argument("--no-block-ads", dest="block_ads", action="store_false",
-                    help="do not block ads and trackers (default: block, with EasyList "
-                         "and EasyPrivacy, so the pool matches an ad-blocking crawl)")
+                    help="do not block ads and trackers (default: block, with Brave's own "
+                         "filter lists, so the pool matches what a Browsertrix crawl - "
+                         "which runs Brave with shields on - was able to request)")
+    ap.add_argument("--brave-lists", default=None,
+                    help=f"directory holding Brave's filter lists and their manifest "
+                         f"(default: {blocking.LISTS_DIR}); populate it with "
+                         f"tools/sync_brave_lists.py")
     ap.add_argument("--noise-mode", choices=("advisory", "enforce"), default="advisory",
                     help="advisory (default): the blocker decides what is out of the pool, "
                          "and the screener's noise rules only report what they would still "
@@ -1384,14 +1389,17 @@ def main() -> int:
         # Set on the screener module: its load_page installs the route before the
         # first navigation, so the baseline load is blocked on the same terms as
         # everything after it.
-        screen.BLOCKER = blocking.Blocker(PKG_ROOT / "cache" / "adblock", USER_AGENT)
-        blocker_info = {"enabled": True, **screen.BLOCKER.describe(),
-                        "rule_text": "python-adblock 0.6.0 reports the matching list and "
-                                     "that a network rule matched, but not the rule text"}
-        print("ad/tracker blocking ON: "
-              + ", ".join(f"{n} ({i['rules']} rules"
-                          + (", STALE" if i.get("stale") else "") + ")"
-                          for n, i in screen.BLOCKER.list_info.items()), flush=True)
+        try:
+            screen.BLOCKER = blocking.Blocker(args.brave_lists)
+        except blocking.BraveListsMissing as exc:
+            print(exc)
+            return 2
+        blocker_info = {"enabled": True, **screen.BLOCKER.describe()}
+        print("ad/tracker blocking ON (Brave's own lists, copied from "
+              f"{screen.BLOCKER.manifest.get('source_profile', '?')}):", flush=True)
+        for name, info in screen.BLOCKER.list_info.items():
+            print(f"    {name} {info['version']}: {info['list_title']} "
+                  f"({info['rules']} rules)", flush=True)
     else:
         print("ad/tracker blocking OFF (--no-block-ads)", flush=True)
 
