@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-loadmore-inert</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f; background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .results { list-style: none; margin: 0; padding: 0; }
+  .results li {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px; margin-bottom: 10px;
+    border: 1px solid #d8d8e0; border-radius: 10px; background: #fff;
+  }
+  .results img { width: 72px; height: 48px; flex: none; background: #e4e4ee; border-radius: 4px; }
+  .results .meta { font-size: 14px; color: #6a6a76; }
+  .loadmore-trigger {
+    display: block; width: 100%; margin-top: 18px; padding: 13px 16px;
+    font-weight: 600; text-align: center;
+    background: #fff; border: 1px solid #d8d8e0; border-radius: 10px;
+    cursor: pointer; user-select: none;
+  }
+  .loadmore-trigger:hover { background: #f3f3f8; }
+  .loadmore-trigger.is-exhausted { color: #8a8a95; cursor: default; }
+  .loadmore-trigger.is-exhausted:hover { background: #fff; }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-loadmore-inert</h1>
+  <p class="lede">
+    Click the "Load more results" strip twice. It is a styled span with a click handler:
+    no button role, no accessible name, no tabindex.
+  </p>
+
+  <ul class="results" id="results">
+    <li>
+      <div>
+        <div>Field report 001</div>
+        <div class="meta">Present when the page loads.</div>
+      </div>
+    </li>
+  </ul>
+
+  <span class="loadmore-trigger">Load more results</span>
+  <p class="status"></p>
+</main>
+
+<script>
+  const MECH = 'click-loadmore';
+  const VARIANT = 'inert';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  // One-way reveal; the strip stays clickable once exhausted so that repeating
+  // the action is a no-op rather than an error.
+  const BATCHES = ['01', '02'];
+  const results = document.getElementById('results');
+  const trigger = document.querySelector('.loadmore-trigger');
+  const status = document.querySelector('.status');
+  let loaded = 0;
+
+  trigger.addEventListener('click', function () {
+    if (loaded >= BATCHES.length) return;
+    const idx = BATCHES[loaded];
+    loaded += 1;
+
+    const item = document.createElement('li');
+    const img = fetchSentinel(idx);
+    if (img) item.appendChild(img);
+    const text = document.createElement('div');
+    text.innerHTML = '<div>Field report ' + String(loaded * 100 + 1).padStart(3, '0') +
+                     '</div><div class="meta">Loaded by batch ' + loaded + '.</div>';
+    item.appendChild(text);
+    results.appendChild(item);
+
+    status.textContent = 'Showing ' + results.children.length + ' results.';
+    if (loaded >= BATCHES.length) {
+      trigger.classList.add('is-exhausted');
+      trigger.textContent = 'No more results';
+    }
+  });
+</script>
+</body>
+</html>

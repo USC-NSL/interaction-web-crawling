@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>scroll-lazyimg-js</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f; background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .filler { margin: 0 0 18px; color: #44444e; }
+  .spacer { height: 900px; display: flex; align-items: center; justify-content: center;
+            color: #b4b4c0; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .lazy-slot {
+    display: flex; align-items: center; gap: 14px; padding: 16px;
+    border: 1px solid #d8d8e0; border-radius: 10px; background: #fff;
+  }
+  .lazy-slot img { width: 120px; height: 80px; flex: none; background: #e4e4ee; border-radius: 6px; }
+  .lazy-slot .placeholder { width: 120px; height: 80px; flex: none;
+    background: repeating-linear-gradient(45deg, #eeeef4, #eeeef4 8px, #e6e6ee 8px, #e6e6ee 16px);
+    border-radius: 6px; }
+  .lazy-slot.is-loaded .placeholder { display: none; }
+  .caption { font-size: 14px; color: #55555f; }
+</style>
+</head>
+<body>
+<main>
+  <h1>scroll-lazyimg-js</h1>
+  <p class="lede">
+    Scroll down. Three figures further down the page load only once they enter the
+    viewport. Nothing loads at the top of the page.
+  </p>
+
+  <p class="filler">
+    The survey covered eleven sites along the eastern ridge, photographed over two seasons.
+    Each figure below was captured on the second pass, when the light was consistent enough
+    to compare exposures across sites.
+  </p>
+  <div class="spacer">scroll on</div>
+
+  <figure class="lazy-slot" id="lazy-slot-a" data-idx="01">
+    <div class="placeholder"></div>
+    <figcaption class="caption">Site 3, eastern ridge — second pass</figcaption>
+  </figure>
+  <div class="spacer">keep scrolling</div>
+
+  <figure class="lazy-slot" id="lazy-slot-b" data-idx="02">
+    <div class="placeholder"></div>
+    <figcaption class="caption">Site 7, saddle approach — second pass</figcaption>
+  </figure>
+  <div class="spacer">keep scrolling</div>
+
+  <figure class="lazy-slot" id="lazy-slot-c" data-idx="03">
+    <div class="placeholder"></div>
+    <figcaption class="caption">Site 11, north face — second pass</figcaption>
+  </figure>
+  <div class="spacer">end of survey</div>
+</main>
+
+<script>
+  const MECH = 'scroll-lazyimg';
+  const VARIANT = 'js';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  // No data-src and no srcset: the URL exists only once this callback runs, so an
+  // attribute harvester that never scrolls finds nothing to fetch.
+  //
+  // The observer deliberately does not unobserve. IntersectionObserver fires on
+  // every intersection change, so the guard in fetchSentinel is the only thing
+  // keeping this to one request per figure - which is what A6 tests.
+  const observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      const slot = entry.target;
+      const img = fetchSentinel(slot.dataset.idx);
+      if (img) {
+        img.alt = '';
+        slot.prepend(img);
+        slot.classList.add('is-loaded');
+      }
+    });
+  }, { threshold: 0.1 });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.lazy-slot'), function (slot) {
+    observer.observe(slot);
+  });
+</script>
+</body>
+</html>

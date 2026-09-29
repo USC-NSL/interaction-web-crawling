@@ -1,0 +1,341 @@
+{
+  "version": 1,
+  "pages": [
+    {
+      "id": "click-accordion-accessible",
+      "path": "pages/click/accordion-accessible.html",
+      "mechanism": "click",
+      "submechanism": "accordion",
+      "variant": "accessible",
+      "resource_sentinels": [
+        "/sentinel/click-accordion/accessible/01.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".accordion-trigger",
+          "repeat": 1
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Real <button> with aria-expanded/aria-controls and an accessible name; panel is a labelled region. Required action inferable from the accessibility tree alone. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "click-accordion-inert",
+      "path": "pages/click/accordion-inert.html",
+      "mechanism": "click",
+      "submechanism": "accordion",
+      "variant": "inert",
+      "resource_sentinels": [
+        "/sentinel/click-accordion/inert/01.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".accordion-trigger",
+          "repeat": 1
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Visually identical to the accessible variant but built from divs with a click handler; no ARIA, no accessible name, no tabindex. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "click-carousel-accessible",
+      "path": "pages/click/carousel-accessible.html",
+      "mechanism": "click",
+      "submechanism": "carousel",
+      "variant": "accessible",
+      "resource_sentinels": [
+        "/sentinel/click-carousel/accessible/01.png",
+        "/sentinel/click-carousel/accessible/02.png",
+        "/sentinel/click-carousel/accessible/03.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".carousel-next",
+          "repeat": 3
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Slide 1 is visible at load and has no sentinel. Slides 2-4 each fetch one sentinel on first reveal only. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "click-carousel-inert",
+      "path": "pages/click/carousel-inert.html",
+      "mechanism": "click",
+      "submechanism": "carousel",
+      "variant": "inert",
+      "resource_sentinels": [
+        "/sentinel/click-carousel/inert/01.png",
+        "/sentinel/click-carousel/inert/02.png",
+        "/sentinel/click-carousel/inert/03.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".carousel-next",
+          "repeat": 3
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Arrow controls are unlabeled divs; no ARIA, no tabindex. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "click-loadmore-accessible",
+      "path": "pages/click/loadmore-accessible.html",
+      "mechanism": "click",
+      "submechanism": "loadmore",
+      "variant": "accessible",
+      "resource_sentinels": [
+        "/sentinel/click-loadmore/accessible/01.png",
+        "/sentinel/click-loadmore/accessible/02.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".loadmore-trigger",
+          "repeat": 2
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": false,
+      "viewport_min_height_px": 720,
+      "notes": "Real <button> labelled 'Load more'; each of the two clicks appends one batch and fetches one sentinel. A third click is a no-op. guard_observable derived empirically: A6 PASSES under guard-removal."
+    },
+    {
+      "id": "click-loadmore-inert",
+      "path": "pages/click/loadmore-inert.html",
+      "mechanism": "click",
+      "submechanism": "loadmore",
+      "variant": "inert",
+      "resource_sentinels": [
+        "/sentinel/click-loadmore/inert/01.png",
+        "/sentinel/click-loadmore/inert/02.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".loadmore-trigger",
+          "repeat": 2
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": false,
+      "viewport_min_height_px": 720,
+      "notes": "Same behavior via a styled <span> with a click handler; no button role, no accessible name, no tabindex. guard_observable derived empirically: A6 PASSES under guard-removal."
+    },
+    {
+      "id": "click-continuereading-accessible",
+      "path": "pages/click/continuereading-accessible.html",
+      "mechanism": "click",
+      "submechanism": "continuereading",
+      "variant": "accessible",
+      "resource_sentinels": [],
+      "text_sentinels": [
+        "SENTINEL-TEXT-CLICK-CONTINUEREADING-ACCESSIBLE-01",
+        "SENTINEL-TEXT-CLICK-CONTINUEREADING-ACCESSIBLE-02"
+      ],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".continue-trigger",
+          "repeat": 1
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Text sentinels live in a <template> and are absent from the rendered DOM until the trigger clones them. Real <button> with aria-expanded/aria-controls. guard_observable derived empirically: A6 FAILS under text-guard-removal."
+    },
+    {
+      "id": "click-continuereading-inert",
+      "path": "pages/click/continuereading-inert.html",
+      "mechanism": "click",
+      "submechanism": "continuereading",
+      "variant": "inert",
+      "resource_sentinels": [],
+      "text_sentinels": [
+        "SENTINEL-TEXT-CLICK-CONTINUEREADING-INERT-01",
+        "SENTINEL-TEXT-CLICK-CONTINUEREADING-INERT-02"
+      ],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".continue-trigger",
+          "repeat": 1
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": false,
+      "viewport_min_height_px": 720,
+      "notes": "Text sentinels are in the DOM under display:none; the trigger is an unlabeled fade overlay div with no ARIA and no tabindex. guard_observable derived empirically: no resource sentinels and the text reveal only toggles a class, so no guard of either kind exists to observe."
+    },
+    {
+      "id": "hover-dropdown-accessible",
+      "path": "pages/hover/dropdown-accessible.html",
+      "mechanism": "hover",
+      "submechanism": "dropdown",
+      "variant": "accessible",
+      "resource_sentinels": [
+        "/sentinel/hover-dropdown/accessible/01.png",
+        "/sentinel/hover-dropdown/accessible/02.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "hover",
+          "selector": ".nav-trigger",
+          "repeat": 1
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": false,
+      "viewport_min_height_px": 720,
+      "notes": "Opens on real mouseover and on keyboard focus. Trigger is a <button> with aria-expanded/aria-haspopup; menu is a labelled list. guard_observable derived empirically: A6 PASSES under guard-removal."
+    },
+    {
+      "id": "hover-dropdown-inert",
+      "path": "pages/hover/dropdown-inert.html",
+      "mechanism": "hover",
+      "submechanism": "dropdown",
+      "variant": "inert",
+      "resource_sentinels": [
+        "/sentinel/hover-dropdown/inert/01.png",
+        "/sentinel/hover-dropdown/inert/02.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "hover",
+          "selector": ".nav-trigger",
+          "repeat": 1
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": false,
+      "viewport_min_height_px": 720,
+      "notes": "Responds to mouseover only: no focus path, no click path, no ARIA, no tabindex. Verified: programmatic focus, Tab+Enter and a synthetic element.click() all fetch nothing; only mouseover opens it. Note that a real pointer click necessarily fires mouseover first, so a crawler using real mouse input will trigger this reveal incidentally when clicking the element. guard_observable derived empirically: A6 PASSES under guard-removal."
+    },
+    {
+      "id": "scroll-lazyimg-js",
+      "path": "pages/scroll/lazyimg-js.html",
+      "mechanism": "scroll",
+      "submechanism": "lazyimg",
+      "variant": "js",
+      "resource_sentinels": [
+        "/sentinel/scroll-lazyimg/js/01.png",
+        "/sentinel/scroll-lazyimg/js/02.png",
+        "/sentinel/scroll-lazyimg/js/03.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "scroll_to",
+          "selector": "#lazy-slot-a",
+          "repeat": 1
+        },
+        {
+          "type": "scroll_to",
+          "selector": "#lazy-slot-b",
+          "repeat": 1
+        },
+        {
+          "type": "scroll_to",
+          "selector": "#lazy-slot-c",
+          "repeat": 1
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Page is >3000px tall; all three slots start below the fold. IntersectionObserver assembles each URL in JS on first intersection. No data-src, no srcset. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "scroll-infinite",
+      "path": "pages/scroll/infinite.html",
+      "mechanism": "scroll",
+      "submechanism": "infinite",
+      "variant": "default",
+      "resource_sentinels": [
+        "/sentinel/scroll-infinite/default/01.png",
+        "/sentinel/scroll-infinite/default/02.png",
+        "/sentinel/scroll-infinite/default/03.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "scroll_to",
+          "selector": ".infinite-footer",
+          "repeat": 3
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": false,
+      "viewport_min_height_px": 720,
+      "notes": "Page is >3000px tall. A batch is appended when the footer enters the viewport; exactly three batches then the observer disconnects. Terminates. guard_observable derived empirically: A6 PASSES under guard-removal. The batch counter is itself a structural guard: appendBatch is only called while appended < BATCHES.length and it increments before returning, so each batch index is fetched at most once and the observer disconnects after the third. Removing the fetchSentinel guard therefore changes nothing - this page is idempotent by construction, not by accident."
+    },
+    {
+      "id": "click-lazyimg-datasrc",
+      "path": "pages/click/lazyimg-datasrc.html",
+      "mechanism": "click",
+      "submechanism": "lazyimg",
+      "variant": "datasrc",
+      "resource_sentinels": [
+        "/sentinel/click-lazyimg/datasrc/01.png",
+        "/sentinel/click-lazyimg/datasrc/02.png",
+        "/sentinel/click-lazyimg/datasrc/03.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".gallery-trigger",
+          "repeat": 1
+        }
+      ],
+      "expect_static_discoverable": true,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Attribute-name isolation pair: the sentinel URL is held in data-src. Identical to its partner page in every other respect - same images, same markup, same single click - so the difference in recall between the two is attributable to the attribute name alone. Browsertrix autofetch harvests data-src and srcset but not data-lazy. expect_static_discoverable is true because the URL is in the served HTML by construction, which is the property under test; A4 is therefore not asserted, A3 still is. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "click-lazyimg-datalazy",
+      "path": "pages/click/lazyimg-datalazy.html",
+      "mechanism": "click",
+      "submechanism": "lazyimg",
+      "variant": "datalazy",
+      "resource_sentinels": [
+        "/sentinel/click-lazyimg/datalazy/01.png",
+        "/sentinel/click-lazyimg/datalazy/02.png",
+        "/sentinel/click-lazyimg/datalazy/03.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".gallery-trigger",
+          "repeat": 1
+        }
+      ],
+      "expect_static_discoverable": true,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Attribute-name isolation pair: the sentinel URL is held in data-lazy. Identical to its partner page in every other respect - same images, same markup, same single click - so the difference in recall between the two is attributable to the attribute name alone. Browsertrix autofetch harvests data-src and srcset but not data-lazy. expect_static_discoverable is true because the URL is in the served HTML by construction, which is the property under test; A4 is therefore not asserted, A3 still is. guard_observable derived empirically: A6 FAILS under guard-removal."
+    }
+  ]
+}

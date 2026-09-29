@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>hover-dropdown-accessible</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f; background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .nav { position: relative; display: flex; gap: 8px; padding: 8px;
+         border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; }
+  .nav-trigger {
+    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+    font: inherit; font-weight: 600; color: inherit;
+    background: transparent; border: 0; border-radius: 8px; cursor: pointer;
+  }
+  .nav-trigger:hover, .nav-trigger[aria-expanded="true"] { background: #f0f0f6; }
+  .nav-trigger:focus-visible { outline: 3px solid #3b62d8; outline-offset: 2px; }
+  .nav-menu {
+    position: absolute; top: 100%; left: 8px; margin-top: 6px; padding: 10px;
+    min-width: 300px; list-style: none;
+    border: 1px solid #d8d8e0; border-radius: 10px; background: #fff;
+    box-shadow: 0 12px 28px rgba(20, 20, 40, 0.12);
+  }
+  .nav-menu[hidden] { display: none; }
+  .nav-menu li { display: flex; align-items: center; gap: 12px; padding: 8px; }
+  .nav-menu img { width: 64px; height: 44px; flex: none; background: #e4e4ee; border-radius: 4px; }
+  .nav-menu a { color: #1b1b1f; }
+  .nav-menu .meta { font-size: 13px; color: #6a6a76; }
+</style>
+</head>
+<body>
+<main>
+  <h1>hover-dropdown-accessible</h1>
+  <p class="lede">
+    Hover the "Collections" item to open its menu, which loads two thumbnails the first
+    time it opens. Keyboard focus opens it too, so the menu is reachable without a mouse.
+  </p>
+
+  <nav class="nav" aria-label="Primary">
+    <button type="button" class="nav-trigger" aria-expanded="false"
+            aria-haspopup="true" aria-controls="collections-menu">
+      Collections
+      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <ul class="nav-menu" id="collections-menu" aria-label="Collections" hidden>
+      <li data-idx="01">
+        <div><a href="#winter">Winter archive</a><div class="meta">42 items</div></div>
+      </li>
+      <li data-idx="02">
+        <div><a href="#field">Field notebooks</a><div class="meta">17 items</div></div>
+      </li>
+    </ul>
+  </nav>
+</main>
+
+<script>
+  const MECH = 'hover-dropdown';
+  const VARIANT = 'accessible';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  const trigger = document.querySelector('.nav-trigger');
+  const menu = document.getElementById('collections-menu');
+
+  // mouseover fires repeatedly while the pointer moves across the trigger, so
+  // the guard in fetchSentinel is what keeps this to one request per thumbnail.
+  function open() {
+    trigger.setAttribute('aria-expanded', 'true');
+    menu.hidden = false;
+    Array.prototype.forEach.call(menu.querySelectorAll('li'), function (item) {
+      const img = fetchSentinel(item.dataset.idx);
+      if (img) {
+        img.alt = '';
+        item.prepend(img);
+      }
+    });
+  }
+
+  function close() {
+    trigger.setAttribute('aria-expanded', 'false');
+    menu.hidden = true;
+  }
+
+  trigger.addEventListener('mouseover', open);
+  trigger.addEventListener('focus', open);
+  document.querySelector('.nav').addEventListener('mouseleave', close);
+  trigger.addEventListener('blur', function (event) {
+    if (!menu.contains(event.relatedTarget)) close();
+  });
+</script>
+</body>
+</html>

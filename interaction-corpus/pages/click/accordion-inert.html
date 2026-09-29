@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-accordion-inert</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f;
+    background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .accordion { border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; overflow: hidden; }
+  .accordion-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 16px 18px;
+    font-weight: 600;
+    background: #fff;
+    cursor: pointer;
+    user-select: none;
+  }
+  .accordion-trigger:hover { background: #f3f3f8; }
+  .chevron { flex: none; transition: transform 120ms ease; color: #6a6a76; }
+  .accordion-trigger.is-open .chevron { transform: rotate(180deg); }
+  .accordion-panel { padding: 0 18px 18px; border-top: 1px solid #ececf2; }
+  .accordion-panel.is-hidden { display: none; }
+  .accordion-panel p { margin: 14px 0 0; }
+  .panel-figure {
+    margin: 16px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border: 1px dashed #c9c9d4;
+    border-radius: 8px;
+    background: #f7f7fb;
+    color: #55555f;
+    font-size: 14px;
+  }
+  .panel-figure img { width: 96px; height: 64px; flex: none; background: #e4e4ee; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-accordion-inert</h1>
+  <p class="lede">
+    Click the "Shipping and returns" row below to expand its panel. The row is a plain
+    div with a click handler: nothing in the accessibility tree marks it as interactive.
+  </p>
+
+  <div class="accordion">
+    <div class="accordion-trigger" data-idx="01">
+      <span>Shipping and returns</span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16">
+        <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="accordion-panel is-hidden" id="panel-shipping">
+      <p>
+        Orders placed before 14:00 local time are dispatched the same working day.
+        Returns are accepted within 30 days of delivery, in original packaging.
+      </p>
+      <figure class="panel-figure" id="figure-shipping">
+        <figcaption>Delivery coverage map</figcaption>
+      </figure>
+    </div>
+  </div>
+</main>
+
+<script>
+  const MECH = 'click-accordion';
+  const VARIANT = 'inert';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  const trigger = document.querySelector('.accordion-trigger');
+  const panel = document.getElementById('panel-shipping');
+  const figure = document.getElementById('figure-shipping');
+
+  trigger.addEventListener('click', function () {
+    const open = trigger.classList.toggle('is-open');
+    panel.classList.toggle('is-hidden', !open);
+    if (open) {
+      const img = fetchSentinel(trigger.dataset.idx);
+      if (img) figure.prepend(img);
+    }
+  });
+</script>
+</body>
+</html>

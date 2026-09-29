@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-continuereading-inert</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f; background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  article { position: relative; border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; padding: 22px 24px; }
+  article h2 { margin: 0 0 12px; font-size: 19px; }
+  article p { margin: 0 0 14px; }
+  .article-rest { display: none; }
+  .article-rest.is-open { display: block; }
+  .continue-trigger {
+    position: relative; z-index: 1;
+    height: 92px; margin: -60px -24px -22px; border-radius: 0 0 10px 10px;
+    background: linear-gradient(to bottom, rgba(255,255,255,0), #fff 62%);
+    cursor: pointer;
+  }
+  /* Once used, the strip stays in the DOM as an inert spacer rather than being
+     removed, so that repeating the action is a no-op rather than an error. */
+  .continue-trigger.is-open { height: 8px; margin: 0; background: none; cursor: default; }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-continuereading-inert</h1>
+  <p class="lede">
+    Click the faded strip at the foot of the article to reveal the rest of it. The strip is
+    an unlabelled div: it has no text, no ARIA and no tabindex.
+  </p>
+
+  <article>
+    <h2>The gauge that measured nothing</h2>
+    <p>
+      For eleven years the pressure gauge on the number two line reported a steady value.
+      The maintenance log recorded it every morning, and every morning it was the same.
+    </p>
+    <p>
+      It took a shift supervisor with a spare afternoon to notice that the needle had not
+      moved through two pump replacements and a full shutdown.
+    </p>
+
+    <!-- Present in the DOM but not rendered: the display:none variant of a text
+         sentinel, as opposed to the template-clone variant. -->
+    <div class="article-rest sentinel-text" id="article-rest">
+      <h3>What the log actually recorded</h3>
+      <p>
+        SENTINEL-TEXT-CLICK-CONTINUEREADING-INERT-01 — the gauge had been isolated by a
+        closed valve since its installation, so the reading was of a sealed section of pipe.
+      </p>
+      <p>
+        SENTINEL-TEXT-CLICK-CONTINUEREADING-INERT-02 — the review that followed found
+        four more instruments in the same condition on adjacent lines.
+      </p>
+    </div>
+
+    <div class="continue-trigger"></div>
+  </article>
+</main>
+
+<script>
+  // No resource sentinels: the reveal is text only.
+  const trigger = document.querySelector('.continue-trigger');
+  const rest = document.getElementById('article-rest');
+
+  trigger.addEventListener('click', function () {
+    rest.classList.add('is-open');
+    trigger.classList.add('is-open');
+  });
+</script>
+</body>
+</html>

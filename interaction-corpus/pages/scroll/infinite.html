@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>scroll-infinite</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f; background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .feed { list-style: none; margin: 0; padding: 0; }
+  .feed li {
+    display: flex; align-items: center; gap: 14px; min-height: 120px;
+    padding: 16px; margin-bottom: 12px;
+    border: 1px solid #d8d8e0; border-radius: 10px; background: #fff;
+  }
+  .feed img { width: 96px; height: 64px; flex: none; background: #e4e4ee; border-radius: 6px; }
+  .feed .meta { font-size: 14px; color: #6a6a76; }
+  .infinite-footer {
+    min-height: 80px; display: flex; align-items: center; justify-content: center;
+    color: #8a8a95; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>scroll-infinite</h1>
+  <p class="lede">
+    Scroll to the bottom to append the next batch of entries. Three batches load, then the
+    feed stops: it does not generate endlessly.
+  </p>
+
+  <ul class="feed" id="feed">
+    <li><div><div>Entry 001</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 002</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 003</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 004</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 005</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 006</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 007</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 008</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 009</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 010</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 011</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 012</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 013</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 014</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 015</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 016</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 017</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 018</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 019</div><div class="meta">Present when the page loads.</div></div></li>
+    <li><div><div>Entry 020</div><div class="meta">Present when the page loads.</div></div></li>
+  </ul>
+
+  <div class="infinite-footer" id="infinite-footer">Scroll for more</div>
+</main>
+
+<script>
+  const MECH = 'scroll-infinite';
+  const VARIANT = 'default';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  // Terminates: exactly three batches, then the observer disconnects. The footer
+  // stays in the DOM so that repeating the scroll action is a no-op, not an error.
+  const BATCHES = ['01', '02', '03'];
+  const feed = document.getElementById('feed');
+  const footer = document.getElementById('infinite-footer');
+  let appended = 0;
+
+  function appendBatch(idx) {
+    for (let i = 0; i < 4; i += 1) {
+      const item = document.createElement('li');
+      const wrap = document.createElement('div');
+      wrap.innerHTML = '<div>Entry ' + String(20 + appended * 4 + i + 1).padStart(3, '0') +
+                       '</div><div class="meta">Appended by batch ' + (appended + 1) + '.</div>';
+      if (i === 0) {
+        const img = fetchSentinel(idx);
+        if (img) {
+          img.alt = '';
+          item.appendChild(img);
+        }
+      }
+      item.appendChild(wrap);
+      feed.appendChild(item);
+    }
+    appended += 1;
+  }
+
+  const observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting || appended >= BATCHES.length) return;
+      appendBatch(BATCHES[appended]);
+      if (appended >= BATCHES.length) {
+        observer.disconnect();
+        footer.textContent = 'End of feed';
+      }
+    });
+  }, { threshold: 0.1 });
+
+  observer.observe(footer);
+</script>
+</body>
+</html>

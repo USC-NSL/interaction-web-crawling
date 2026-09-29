@@ -1,0 +1,34 @@
+# Allowlist: ignore everything, then re-include only what is shared.
+# Git can only re-include a file if its parent directory is re-included,
+# which is why each directory is un-ignored and then its contents re-ignored.
+
+/*
+!/.gitignore
+!/README.md
+
+# ---- Corpus: pages, plus what is needed to serve and test them ----
+!/interaction-corpus/
+/interaction-corpus/*
+!/interaction-corpus/pages/
+!/interaction-corpus/sentinel/
+!/interaction-corpus/manifest.json
+!/interaction-corpus/tools/
+/interaction-corpus/tools/*
+!/interaction-corpus/tools/serve.py
+
+# ---- Explorer, plus the screener modules it imports ----
+!/page-screener/
+/page-screener/*
+!/page-screener/requirements.txt
+!/page-screener/tools/
+/page-screener/tools/*
+!/page-screener/tools/explore.py
+!/page-screener/tools/explore_acceptance.py
+!/page-screener/tools/screen.py
+
+# ---- Never commit, even inside allowed directories ----
+__pycache__/
+*.pyc
+.DS_Store
+**/logs/
+**/out/

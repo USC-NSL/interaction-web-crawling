@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-carousel-inert</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f;
+    background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .carousel { position: relative; border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; padding: 20px 64px; }
+  .slide { min-height: 190px; }
+  .slide.is-hidden { display: none; }
+  .slide h2 { margin: 0 0 8px; font-size: 18px; }
+  .slide p { margin: 0 0 14px; color: #44444e; }
+  .slide-figure {
+    display: flex; align-items: center; gap: 12px; padding: 12px;
+    border: 1px dashed #c9c9d4; border-radius: 8px; background: #f7f7fb;
+    color: #55555f; font-size: 14px;
+  }
+  .slide-figure img { width: 96px; height: 64px; flex: none; background: #e4e4ee; border-radius: 4px; }
+  .carousel-prev, .carousel-next {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+    border: 1px solid #d8d8e0; border-radius: 999px;
+    background: #fff; color: #33333c; cursor: pointer; user-select: none;
+  }
+  .carousel-prev { left: 12px; }
+  .carousel-next { right: 12px; }
+  .carousel-prev:hover, .carousel-next:hover { background: #f3f3f8; }
+  .status { margin: 12px 0 0; font-size: 14px; color: #6a6a76; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-carousel-inert</h1>
+  <p class="lede">
+    Click the right-hand arrow three times to reach the fourth slide. The arrows are
+    unlabelled divs: no ARIA, no accessible name, no tabindex.
+  </p>
+
+  <div class="carousel">
+    <div class="slide">
+      <h2>Alpine frame, 2024</h2>
+      <p>Brushed aluminium, 1.4 kg. Visible when the page loads, so it carries no figure to load.</p>
+    </div>
+    <div class="slide is-hidden" data-idx="01">
+      <h2>Drivetrain detail</h2>
+      <p>Eleven-speed cassette with a carbon derailleur cage.</p>
+      <figure class="slide-figure"><figcaption>Drivetrain, close-up</figcaption></figure>
+    </div>
+    <div class="slide is-hidden" data-idx="02">
+      <h2>Cockpit</h2>
+      <p>Integrated bar and stem, routed internally.</p>
+      <figure class="slide-figure"><figcaption>Cockpit, from above</figcaption></figure>
+    </div>
+    <div class="slide is-hidden" data-idx="03">
+      <h2>Finish options</h2>
+      <p>Six colourways, including two matte finishes.</p>
+      <figure class="slide-figure"><figcaption>Colourway swatches</figcaption></figure>
+    </div>
+
+    <div class="carousel-prev">
+      <svg width="16" height="16" viewBox="0 0 16 16">
+        <path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="carousel-next">
+      <svg width="16" height="16" viewBox="0 0 16 16">
+        <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <p class="status">Slide 1 of 4</p>
+  </div>
+</main>
+
+<script>
+  const MECH = 'click-carousel';
+  const VARIANT = 'inert';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  const slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  const status = document.querySelector('.status');
+  let current = 0;
+
+  // Wraps past the last slide, so re-running the action returns to a revealed
+  // slide and the already-fetched guard stays observable (spec §4).
+  function show(next) {
+    const index = (next + slides.length) % slides.length;
+    slides[current].classList.add('is-hidden');
+    slides[index].classList.remove('is-hidden');
+    current = index;
+    status.textContent = 'Slide ' + (index + 1) + ' of ' + slides.length;
+
+    const idx = slides[index].dataset.idx;
+    if (idx) {
+      const img = fetchSentinel(idx);
+      if (img) slides[index].querySelector('.slide-figure').prepend(img);
+    }
+  }
+
+  document.querySelector('.carousel-next').addEventListener('click', function () { show(current + 1); });
+  document.querySelector('.carousel-prev').addEventListener('click', function () { show(current - 1); });
+</script>
+</body>
+</html>

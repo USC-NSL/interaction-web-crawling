@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-accordion-accessible</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f;
+    background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .accordion { border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; overflow: hidden; }
+  .accordion + .accordion { margin-top: 12px; }
+  .accordion-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    margin: 0;
+    padding: 16px 18px;
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    color: inherit;
+    background: #fff;
+    border: 0;
+    cursor: pointer;
+  }
+  .accordion-trigger:hover { background: #f3f3f8; }
+  .accordion-trigger:focus-visible { outline: 3px solid #3b62d8; outline-offset: -3px; }
+  .chevron { flex: none; transition: transform 120ms ease; color: #6a6a76; }
+  .accordion-trigger[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+  .accordion-panel { padding: 0 18px 18px; border-top: 1px solid #ececf2; }
+  .accordion-panel[hidden] { display: none; }
+  .accordion-panel p { margin: 14px 0 0; }
+  .panel-figure {
+    margin: 16px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border: 1px dashed #c9c9d4;
+    border-radius: 8px;
+    background: #f7f7fb;
+    color: #55555f;
+    font-size: 14px;
+  }
+  .panel-figure img {
+    width: 96px;
+    height: 64px;
+    flex: none;
+    background: #e4e4ee;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-accordion-accessible</h1>
+  <p class="lede">
+    Click the "Shipping and returns" button below to expand its panel. The panel and its
+    figure stay unloaded until that click happens.
+  </p>
+
+  <div class="accordion">
+    <h2 style="margin:0;font-size:inherit">
+      <button type="button" class="accordion-trigger" id="trigger-shipping"
+              aria-expanded="false" aria-controls="panel-shipping" data-idx="01">
+        <span>Shipping and returns</span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </h2>
+    <div class="accordion-panel" id="panel-shipping" role="region"
+         aria-labelledby="trigger-shipping" hidden>
+      <p>
+        Orders placed before 14:00 local time are dispatched the same working day.
+        Returns are accepted within 30 days of delivery, in original packaging.
+      </p>
+      <figure class="panel-figure" id="figure-shipping">
+        <figcaption>Delivery coverage map</figcaption>
+      </figure>
+    </div>
+  </div>
+</main>
+
+<script>
+  // Page-level constants. The asset path is assembled from these at interaction
+  // time and never written out as a literal, so an attribute scraper or a regex
+  // over this source finds nothing fetchable.
+  const MECH = 'click-accordion';
+  const VARIANT = 'accessible';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  // Fetch each sentinel at most once per page load: repeating an action must not
+  // repeat the request. The guard is the first statement of this helper.
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  const trigger = document.querySelector('.accordion-trigger');
+  const panel = document.getElementById(trigger.getAttribute('aria-controls'));
+  const figure = document.getElementById('figure-shipping');
+
+  trigger.addEventListener('click', function () {
+    const expanded = trigger.getAttribute('aria-expanded') === 'true';
+    trigger.setAttribute('aria-expanded', String(!expanded));
+    panel.hidden = expanded;
+
+    if (!expanded) {
+      const img = fetchSentinel(trigger.dataset.idx);
+      if (img) {
+        img.alt = 'Delivery coverage map';
+        figure.prepend(img);
+      }
+    }
+  });
+</script>
+</body>
+</html>

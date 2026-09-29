@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-lazyimg-datalazy</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f; background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .gallery-trigger {
+    display: inline-block; padding: 12px 20px;
+    font: inherit; font-weight: 600; color: #1b1b1f;
+    background: #fff; border: 1px solid #d8d8e0; border-radius: 10px; cursor: pointer;
+  }
+  .gallery-trigger:hover { background: #f3f3f8; }
+  .gallery-trigger:focus-visible { outline: 3px solid #3b62d8; outline-offset: 2px; }
+  .gallery { margin-top: 20px; display: flex; gap: 14px; }
+  .gallery[hidden] { display: none; }
+  .gallery figure {
+    margin: 0; flex: 1; padding: 12px;
+    border: 1px dashed #c9c9d4; border-radius: 8px; background: #f7f7fb;
+    color: #55555f; font-size: 14px; text-align: center;
+  }
+  .gallery img {
+    display: block; width: 100%; height: 90px;
+    background: #e4e4ee; border-radius: 4px; margin-bottom: 8px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-lazyimg-datalazy</h1>
+  <p class="lede">
+    Click "Show gallery" to reveal three figures. Each figure's image URL is held in a
+    <code>data-lazy</code> attribute until the click copies it into <code>src</code>.
+  </p>
+
+  <button type="button" class="gallery-trigger" aria-expanded="false"
+          aria-controls="gallery">Show gallery</button>
+
+  <div class="gallery" id="gallery" role="region" aria-label="Gallery" hidden>
+    <figure>
+      <img alt="Plate 1" data-idx="01" data-lazy="/sentinel/click-lazyimg/datalazy/01.png">
+      <figcaption>Plate 1</figcaption>
+    </figure>
+    <figure>
+      <img alt="Plate 2" data-idx="02" data-lazy="/sentinel/click-lazyimg/datalazy/02.png">
+      <figcaption>Plate 2</figcaption>
+    </figure>
+    <figure>
+      <img alt="Plate 3" data-idx="03" data-lazy="/sentinel/click-lazyimg/datalazy/03.png">
+      <figcaption>Plate 3</figcaption>
+    </figure>
+  </div>
+</main>
+
+<script>
+  // This page deliberately breaks the §2 construction rule: the sentinel URL is
+  // written into the served HTML, in a data-lazy attribute. That is the property
+  // under test. Its partner page is identical except for the attribute name, so
+  // any difference in recall between the two is attributable to the name alone -
+  // autofetch harvests data-src and srcset, but not data-lazy.
+  const MECH = 'click-lazyimg';
+  const VARIANT = 'datalazy';
+
+  function assetUrl(img) {
+    return img.dataset.lazy;
+  }
+
+  // Fetch each sentinel at most once per page load, so repeating the action does
+  // not repeat the request.
+  const fetched = new Set();
+  function fetchSentinel(idx, img) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    img.src = assetUrl(img);
+    return img;
+  }
+
+  const trigger = document.querySelector('.gallery-trigger');
+  const gallery = document.getElementById('gallery');
+
+  trigger.addEventListener('click', function () {
+    const expanded = trigger.getAttribute('aria-expanded') === 'true';
+    trigger.setAttribute('aria-expanded', String(!expanded));
+    gallery.hidden = expanded;
+    trigger.textContent = expanded ? 'Show gallery' : 'Hide gallery';
+    if (!expanded) {
+      Array.prototype.forEach.call(gallery.querySelectorAll('img'), function (img) {
+        fetchSentinel(img.dataset.idx, img);
+      });
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-continuereading-accessible</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f; background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  article { border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; padding: 22px 24px; }
+  article h2 { margin: 0 0 12px; font-size: 19px; }
+  article p { margin: 0 0 14px; }
+  .continue-trigger {
+    display: inline-block; margin-top: 4px; padding: 11px 18px;
+    font: inherit; font-weight: 600; color: #1b1b1f;
+    background: #fff; border: 1px solid #d8d8e0; border-radius: 999px; cursor: pointer;
+  }
+  .continue-trigger:hover { background: #f3f3f8; }
+  .continue-trigger:focus-visible { outline: 3px solid #3b62d8; outline-offset: 2px; }
+  .article-rest[hidden] { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-continuereading-accessible</h1>
+  <p class="lede">
+    Click "Continue reading" to reveal the rest of the article. This page fetches nothing:
+    the gated content is text, and it is not in the document until the button is pressed.
+  </p>
+
+  <article>
+    <h2>The gauge that measured nothing</h2>
+    <p>
+      For eleven years the pressure gauge on the number two line reported a steady value.
+      The maintenance log recorded it every morning, and every morning it was the same.
+    </p>
+    <p>
+      It took a shift supervisor with a spare afternoon to notice that the needle had not
+      moved through two pump replacements and a full shutdown.
+    </p>
+
+    <button type="button" class="continue-trigger"
+            aria-expanded="false" aria-controls="article-rest">Continue reading</button>
+
+    <div class="article-rest sentinel-text" id="article-rest" role="region"
+         aria-labelledby="article-rest-heading" hidden></div>
+  </article>
+</main>
+
+<!-- The gated text lives here and is absent from the rendered document until the
+     button clones it in. Stronger than display:none, which leaves it in the DOM. -->
+<template id="article-rest-template">
+  <h3 id="article-rest-heading">What the log actually recorded</h3>
+  <p>
+    SENTINEL-TEXT-CLICK-CONTINUEREADING-ACCESSIBLE-01 — the gauge had been isolated by a
+    closed valve since its installation, so the reading was of a sealed section of pipe.
+  </p>
+  <p>
+    SENTINEL-TEXT-CLICK-CONTINUEREADING-ACCESSIBLE-02 — the review that followed found
+    four more instruments in the same condition on adjacent lines.
+  </p>
+</template>
+
+<script>
+  // No resource sentinels on this page: the reveal is text only, which is the
+  // case the resource-based metric is blind to.
+  const template = document.getElementById('article-rest-template');
+  const trigger = document.querySelector('.continue-trigger');
+  const rest = document.getElementById('article-rest');
+  let cloned = false;
+
+  trigger.addEventListener('click', function () {
+    const expanded = trigger.getAttribute('aria-expanded') === 'true';
+    if (!expanded && !cloned) {
+      cloned = true;
+      rest.appendChild(template.content.cloneNode(true));
+    }
+    trigger.setAttribute('aria-expanded', String(!expanded));
+    rest.hidden = expanded;
+    trigger.textContent = expanded ? 'Continue reading' : 'Show less';
+  });
+</script>
+</body>
+</html>
