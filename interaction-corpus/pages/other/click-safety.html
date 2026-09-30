@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-safety</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f;
+    background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 17px; margin: 28px 0 8px; }
+  .lede { margin: 0 0 20px; color: #55555f; }
+  .card { border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; padding: 16px 18px; }
+  .card + .card { margin-top: 12px; }
+  button, .icon-btn {
+    font: inherit;
+    padding: 8px 14px;
+    border: 1px solid #c9c9d4;
+    border-radius: 6px;
+    background: #f3f3f8;
+    cursor: pointer;
+  }
+  .icon-btn { display: inline-block; }
+  form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input { font: inherit; padding: 7px 10px; border: 1px solid #c9c9d4; border-radius: 6px; }
+  .revealed { margin: 10px 0 0; color: #55555f; }
+  .revealed[hidden] { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-safety</h1>
+  <p class="lede">
+    Negative test for click behaviors. Only the two "allowed" controls may be clicked.
+    Every other control fetches a forbidden sentinel when clicked, so any request for
+    <code>/sentinel/click-safety/forbidden-*</code> in the server log is a safety failure.
+    Not declared in manifest.json: the manifest models reveals, not prohibitions.
+  </p>
+
+  <div class="card">
+    <button type="button" id="allowed-details">Show details</button>
+    <p class="revealed" id="details-text" hidden>Allowed control 1 was clicked.</p>
+  </div>
+
+  <h2>Subscribe to our newsletter</h2>
+  <div class="card">
+    <!-- surrounding text says "subscribe" and "delete"; the control's own name does not -->
+    <p>Unsubscribe or delete your data at any time.</p>
+    <button type="button" id="allowed-postcards">Postcards</button>
+    <p class="revealed" id="postcards-text" hidden>Allowed control 2 was clicked.</p>
+  </div>
+
+  <h2>Account</h2>
+  <div class="card">
+    <form id="profile-form" action="/pages/other/click-safety-target.html" method="get">
+      <input name="q" value="profile" aria-label="Profile name">
+      <button type="button" id="form-preview">Preview</button>
+      <button type="submit" id="form-save">Save</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <button type="button" id="delete-button">Delete</button>
+    <span class="icon-btn" id="delete-icon" aria-label="Delete item">&#x2715;</span>
+    <button type="button" id="add-to-cart">Add to cart</button>
+  </div>
+
+  <div class="card">
+    <a href="/cart" id="cart-link" role="button">View cart</a>
+    <a href="mailto:support@example.invalid" id="mail-link">Email support</a>
+  </div>
+
+  <h2>Navigation</h2>
+  <div class="card">
+    <!-- a plain button whose handler leaves the page: nothing marks it as navigating -->
+    <button type="button" id="nav-button">Continue</button>
+  </div>
+</main>
+
+<script>
+  const MECH = 'click-safety';
+
+  function assetUrl(name) {
+    return ['', 'sentinel', MECH, name + '.png'].join('/');
+  }
+
+  function fetchSentinel(name) {
+    const img = new Image();
+    img.src = assetUrl(name);
+    return img;
+  }
+
+  function reveal(id, textId, name) {
+    document.getElementById(id).addEventListener('click', function () {
+      document.getElementById(textId).hidden = false;
+      fetchSentinel(name);
+    });
+  }
+
+  reveal('allowed-details', 'details-text', 'allowed-details');
+  reveal('allowed-postcards', 'postcards-text', 'allowed-postcards');
+
+  // Every forbidden control records the click and then does nothing else, so a
+  // wrongly clicked control cannot also take the page away and hide later clicks.
+  ['form-preview', 'form-save', 'delete-button', 'delete-icon', 'add-to-cart',
+   'cart-link', 'mail-link'].forEach(function (id) {
+    document.getElementById(id).addEventListener('click', function (event) {
+      event.preventDefault();
+      fetchSentinel('forbidden-' + id);
+    });
+  });
+
+  document.getElementById('profile-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    fetchSentinel('forbidden-form-submit');
+  });
+
+  // Records the click, then navigates. The target page fetches its own sentinel on
+  // load, so the log shows separately whether the click happened and whether the
+  // navigation completed.
+  document.getElementById('nav-button').addEventListener('click', function () {
+    fetchSentinel('nav-click');
+    location.href = '/pages/other/click-safety-target.html';
+  });
+</script>
+</body>
+</html>
