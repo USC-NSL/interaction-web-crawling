@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-listener-accessible</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f;
+    background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .spec { border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; overflow: hidden; }
+  .spec-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px;
+    font-weight: 600;
+  }
+  /* Deliberately no cursor: pointer here or on any ancestor: the trigger must not be
+     discoverable by cursor style. */
+  .listener-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid #c9c9d4;
+    border-radius: 6px;
+    background: #f3f3f8;
+    color: #6a6a76;
+  }
+  .listener-trigger:focus-visible { outline: 3px solid #3b62d8; outline-offset: 2px; }
+  .listener-trigger svg { transition: transform 120ms ease; }
+  .listener-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .spec-panel { padding: 0 18px 18px; border-top: 1px solid #ececf2; }
+  .spec-panel[hidden] { display: none; }
+  .spec-panel p { margin: 14px 0 0; }
+  .panel-figure {
+    margin: 16px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border: 1px dashed #c9c9d4;
+    border-radius: 8px;
+    background: #f7f7fb;
+    color: #55555f;
+    font-size: 14px;
+  }
+  .panel-figure img {
+    width: 96px;
+    height: 64px;
+    flex: none;
+    background: #e4e4ee;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-listener-accessible</h1>
+  <p class="lede">
+    Click the arrow control beside "Technical specifications" to expand the panel. The
+    control is a div with role="button" and a label, but its pointer stays the default arrow.
+  </p>
+
+  <div class="spec">
+    <div class="spec-header">
+      <span>Technical specifications</span>
+      <div class="listener-trigger" role="button" tabindex="0"
+           aria-label="Show technical specifications" aria-expanded="false"
+           aria-controls="panel-specs" data-idx="01">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="spec-panel" id="panel-specs" role="region"
+         aria-label="Technical specifications" hidden>
+      <p>
+        Frame: 6061 aluminium, 1.4 kg. Fork: carbon, tapered steerer. Wheels: 700c,
+        tubeless-ready rims with 28 mm tyres.
+      </p>
+      <figure class="panel-figure" id="figure-specs">
+        <figcaption>Geometry diagram</figcaption>
+      </figure>
+    </div>
+  </div>
+</main>
+
+<script>
+  const MECH = 'click-listener';
+  const VARIANT = 'accessible';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  // Fetch each sentinel at most once per page load: repeating an action must not
+  // repeat the request. The guard is the first statement of this helper.
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  const trigger = document.querySelector('.listener-trigger');
+  const panel = document.getElementById(trigger.getAttribute('aria-controls'));
+  const figure = document.getElementById('figure-specs');
+
+  // Attached with addEventListener, never an onclick attribute or property: the
+  // registered listener is the only signal that this element is clickable.
+  function toggle() {
+    const expanded = trigger.getAttribute('aria-expanded') === 'true';
+    trigger.setAttribute('aria-expanded', String(!expanded));
+    panel.hidden = expanded;
+
+    if (!expanded) {
+      const img = fetchSentinel(trigger.dataset.idx);
+      if (img) {
+        img.alt = 'Geometry diagram';
+        figure.prepend(img);
+      }
+    }
+  }
+
+  trigger.addEventListener('click', toggle);
+  trigger.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggle();
+    }
+  });
+</script>
+</body>
+</html>
