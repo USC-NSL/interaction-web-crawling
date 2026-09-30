@@ -66,8 +66,11 @@
   // This page deliberately breaks the §2 construction rule: the sentinel URL is
   // written into the served HTML, in a data-lazy attribute. That is the property
   // under test. Its partner page is identical except for the attribute name, so
-  // any difference in recall between the two is attributable to the name alone -
-  // autofetch harvests data-src and srcset, but not data-lazy.
+  // any difference in recall between the two is attributable to the name alone.
+  // Browsertrix autofetch harvests data-src and srcset, and also any data-*
+  // attribute whose value starts with http, /, ./ or ../, so it harvests
+  // data-lazy too: the pair isolates the attribute name only for crawlers that
+  // do not scan data-* values.
   const MECH = 'click-lazyimg';
   const VARIANT = 'datalazy';
 
