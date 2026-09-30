@@ -311,7 +311,7 @@
       "expect_static_discoverable": true,
       "guard_observable": true,
       "viewport_min_height_px": 720,
-      "notes": "Attribute-name isolation pair: the sentinel URL is held in data-src. Identical to its partner page in every other respect - same images, same markup, same single click - so the difference in recall between the two is attributable to the attribute name alone. Browsertrix autofetch harvests data-src and srcset but not data-lazy. expect_static_discoverable is true because the URL is in the served HTML by construction, which is the property under test; A4 is therefore not asserted, A3 still is. guard_observable derived empirically: A6 FAILS under guard-removal."
+      "notes": "Attribute-name isolation pair: the sentinel URL is held in data-src. Identical to its partner page in every other respect - same images, same markup, same single click - so the difference in recall between the two is attributable to the attribute name alone. Browsertrix autofetch harvests data-src and srcset, and also any data-* attribute whose value starts with http, /, ./ or ../ (AutoFetcher.extractDataAttributes, browsertrix-behaviors src/autofetcher.ts:343-352), so it harvests data-lazy too: with autofetch enabled both pages are fetched without any click, and the pair isolates the attribute name only for crawlers that do not scan data-* values. expect_static_discoverable is true because the URL is in the served HTML by construction, which is the property under test; A4 is therefore not asserted, A3 still is. guard_observable derived empirically: A6 FAILS under guard-removal."
     },
     {
       "id": "click-lazyimg-datalazy",
@@ -335,7 +335,7 @@
       "expect_static_discoverable": true,
       "guard_observable": true,
       "viewport_min_height_px": 720,
-      "notes": "Attribute-name isolation pair: the sentinel URL is held in data-lazy. Identical to its partner page in every other respect - same images, same markup, same single click - so the difference in recall between the two is attributable to the attribute name alone. Browsertrix autofetch harvests data-src and srcset but not data-lazy. expect_static_discoverable is true because the URL is in the served HTML by construction, which is the property under test; A4 is therefore not asserted, A3 still is. guard_observable derived empirically: A6 FAILS under guard-removal."
+      "notes": "Attribute-name isolation pair: the sentinel URL is held in data-lazy. Identical to its partner page in every other respect - same images, same markup, same single click - so the difference in recall between the two is attributable to the attribute name alone. Browsertrix autofetch harvests data-src and srcset, and also any data-* attribute whose value starts with http, /, ./ or ../ (AutoFetcher.extractDataAttributes, browsertrix-behaviors src/autofetcher.ts:343-352), so it harvests data-lazy too: with autofetch enabled both pages are fetched without any click, and the pair isolates the attribute name only for crawlers that do not scan data-* values. expect_static_discoverable is true because the URL is in the served HTML by construction, which is the property under test; A4 is therefore not asserted, A3 still is. guard_observable derived empirically: A6 FAILS under guard-removal."
     }
   ]
 }
