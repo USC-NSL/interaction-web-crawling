@@ -1095,6 +1095,11 @@ class Explorer:
             "http_status": self.result.status,
             "baseline_window": [round(self.baseline_window[0], 3), round(self.baseline_window[1], 3)],
             "baseline_content": baseline_content,
+            # Every baseline request as requested (query kept), before the noise rules,
+            # with its status: lets a caller compare at full-URL granularity against an
+            # instrument that applies no noise rules. raw is capped at 5 per path.
+            "baseline_raw": sorted({raw for u in baseline_norm for raw in self.requests[u]["raw"]}),
+            "baseline_status": {u: (meta.get(u) or {}).get("status") for u in baseline_norm},
             "baseline_noise": baseline_noise,
             "new_content": new_content,
             "baseline_size_filtered": baseline_size,
@@ -1346,6 +1351,9 @@ def main() -> int:
     ap.add_argument("--periodic-window", type=float, default=PERIODIC_WINDOW_S,
                     help="seconds to sit idle before baseline, recording the page's own "
                          "timer-driven requests (default 30)")
+    ap.add_argument("--min-host-interval", type=float, default=screen.MIN_HOST_INTERVAL,
+                    help="seconds between page loads to one host, including reloads "
+                         "(default: the screener's, 5)")
     ap.add_argument("--no-block-ads", dest="block_ads", action="store_false",
                     help="do not block ads and trackers (default: block, with Brave's own "
                          "filter lists, so the pool matches what a Browsertrix crawl - "
@@ -1405,7 +1413,7 @@ def main() -> int:
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    throttle = HostThrottle()
+    throttle = HostThrottle(args.min_host_interval)
     robots_cache = RobotsCache(PKG_ROOT / "cache" / "robots")
     seen_gate_keys: set[tuple[str, str]] = set()
     rows: list[dict] = []
