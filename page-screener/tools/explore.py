@@ -73,6 +73,51 @@ SETTLE_QUIET_MS = 500             # ... then until no request has been in flight
 SETTLE_MAX_MS = 5000
 RESTORE_LOSS_RATIO = 2.0          # see click_element: undoing a collapsing click
 TEXT_FRAGMENT_LOG_LIMIT = 2000
+RAW_URLS_PER_KEY = 5              # raw URLs kept per origin+path key; --all-raw-urls lifts it
+LABEL_MAX_WORDS = 4               # the denylist applies only to names this short
+
+# --- --match-crawler: mirror Browsertrix 1.14.3's browser (src/util/browser.ts) ---
+# Brave Origin 149 under Xvfb, GEOMETRY=1360x1020x16, puppeteer defaultViewport of the
+# full screen (recording mode, no height offset), deviceScaleFactor 1 (puppeteer
+# default), its Linux UA plus the crawl-eval suffix, and the sec-ch-ua headers it sets.
+CRAWLER_VIEWPORT = {"width": 1360, "height": 1020}
+CRAWLER_UA_SUFFIX = (f"USC-CURVE-AcademicResearch-CrawlEval/1.0 (+{CONTACT_URL}; academic "
+                     "research; evaluating crawler click behaviors; one page at a time, "
+                     ">=60s per host)")
+CRAWLER_UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/149.0.0.0 Safari/537.36 " + CRAWLER_UA_SUFFIX)
+CRAWLER_HEADERS = {
+    "sec-ch-ua": '"Not(A:Brand";v="8", "Chromium";v="149", "Brave";v="149"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Linux"',
+}
+# defaultArgs plus the chromeArgs additions, minus what is about the container rather
+# than the page: --remote-debugging-*, --no-sandbox, --display, --user-agent (set on
+# the context instead). --disable-lazy-loading is the one that matters most: it turns
+# off native loading=lazy for images and iframes.
+CRAWLER_ARGS = [
+    "--disable-field-trial-config", "--disable-background-networking",
+    "--enable-features=NetworkService,NetworkServiceInProcess",
+    "--disable-background-timer-throttling", "--disable-backgrounding-occluded-windows",
+    "--disable-back-forward-cache", "--disable-breakpad",
+    "--disable-client-side-phishing-detection",
+    "--disable-component-extensions-with-background-pages", "--disable-component-update",
+    "--no-default-browser-check", "--disable-default-apps", "--disable-dev-shm-usage",
+    "--disable-extensions",
+    "--disable-features=ImprovedCookieControls,LazyFrameLoading,GlobalMediaControls,"
+    "DestroyProfileOnBrowserClose,MediaRouter,DialMediaRouteProvider,AcceptCHFrame,"
+    "AutoExpandDetailsElement,CertificateTransparencyComponentUpdater,"
+    "AvoidUnnecessaryBeforeUnloadCheckSync,Translate,OptimizationGuideModelDownloading,"
+    "OptimizationHintsFetching,OptimizationTargetPrediction,OptimizationHints",
+    "--allow-pre-commit-input", "--disable-hang-monitor", "--disable-ipc-flooding-protection",
+    "--disable-popup-blocking", "--disable-prompt-on-repost", "--disable-renderer-backgrounding",
+    "--disable-sync", "--disable-lazy-loading", "--force-color-profile=srgb",
+    "--metrics-recording-only", "--no-first-run", "--enable-automation",
+    "--password-store=basic", "--use-mock-keychain", "--no-service-autorun",
+    "--export-tagged-pdf", "--apps-keep-chrome-alive-in-tests",
+    "--disable-background-media-suspend", "--autoplay-policy=no-user-gesture-required",
+    "--disable-site-isolation-trials",
+]
 RUNS = 2
 
 ACTION_ACCOUNTING = (
@@ -377,6 +422,7 @@ class Explorer:
         # matches. Recorded during an idle window before baseline, and excluded from
         # attribution and novelty for the rest of the session.
         self.periodic_patterns: set[str] = set()
+        self.raw_types: dict[str, str] = {}    # raw URL -> resource type, first seen
         self.periodic_window_hits: set[str] = set()
         self.recording_periodic = False
         self.periodic_excluded: dict[str, int] = {}
@@ -412,8 +458,10 @@ class Explorer:
             self.requests[norm] = {"first_action": self.current, "raw": [url],
                                    "resource_type": request.resource_type,
                                    "t": round(time.time(), 3)}
-        elif url not in rec["raw"] and len(rec["raw"]) < 5:
+        elif url not in rec["raw"] and (self.opts.all_raw_urls
+                                        or len(rec["raw"]) < RAW_URLS_PER_KEY):
             rec["raw"].append(url)
+        self.raw_types.setdefault(url, request.resource_type)
 
     def _on_request_done(self, request) -> None:
         self.inflight.discard(request)
@@ -865,7 +913,8 @@ class Explorer:
 
     def veto(self, cand: dict) -> bool:
         """Apply the screener's safety rules. True if the click is refused."""
-        safe, reason, kind = click_is_safe(cand, self.settled_url)
+        safe, reason, kind = click_is_safe(cand, self.settled_url,
+                                           label_max_words=LABEL_MAX_WORDS)
         if safe:
             return False
         record = {"target": cand["selector"], "tag": cand["tag"], "name": own_name_of(cand),
@@ -881,8 +930,13 @@ class Explorer:
     # ---- driver ---------------------------------------------------------------
 
     def run(self) -> dict:
+        match = self.opts.match_crawler
         ctx = self.browser.new_context(
-            viewport=VIEWPORT, user_agent=USER_AGENT, accept_downloads=False,
+            viewport=CRAWLER_VIEWPORT if match else VIEWPORT,
+            user_agent=CRAWLER_UA if match else USER_AGENT,
+            device_scale_factor=1 if match else None,
+            extra_http_headers=CRAWLER_HEADERS if match else None,
+            accept_downloads=False,
             java_script_enabled=True,
             # Requests a service worker makes for the page are invisible to page
             # request events; an oracle cannot afford a blind spot there.
@@ -900,8 +954,12 @@ class Explorer:
             for raw in self.result.requests_raw:
                 if is_network_url(raw):
                     norm = normalise_request(raw)
-                    self.requests.setdefault(norm, {"first_action": 0, "raw": [raw],
-                                                    "resource_type": "", "t": 0})
+                    rec = self.requests.setdefault(norm, {"first_action": 0, "raw": [],
+                                                          "resource_type": "", "t": 0})
+                    if raw not in rec["raw"] and (self.opts.all_raw_urls
+                                                  or len(rec["raw"]) < RAW_URLS_PER_KEY):
+                        rec["raw"].append(raw)
+            self.raw_types.update(self.result.request_types)
             # Registered straight after load_page returns: the sync API dispatches
             # events only inside blocking calls, so there is no gap.
             page.on("request", self._on_request)
@@ -1100,6 +1158,7 @@ class Explorer:
             # instrument that applies no noise rules. raw is capped at 5 per path.
             "baseline_raw": sorted({raw for u in baseline_norm for raw in self.requests[u]["raw"]}),
             "baseline_status": {u: (meta.get(u) or {}).get("status") for u in baseline_norm},
+            "raw_types": dict(sorted(self.raw_types.items())),
             "baseline_noise": baseline_noise,
             "new_content": new_content,
             "baseline_size_filtered": baseline_size,
@@ -1163,7 +1222,15 @@ def explore_page(pw, url: str, page_id: str, throttle: HostThrottle, robots_cach
         print(f"    run {run_no}/{opts.runs} ...", flush=True)
         # A fresh browser per run, as the screener does per URL: a dead network
         # service must not take the second run down with the first.
-        browser = pw.chromium.launch(headless=not opts.headed)
+        if opts.match_crawler:
+            # full Chromium (new headless) rather than the headless shell; the crawler
+            # runs headful under Xvfb, which a desktop run cannot reproduce
+            browser = pw.chromium.launch(headless=not opts.headed, channel="chromium",
+                                         args=CRAWLER_ARGS,
+                                         ignore_default_args=["--enable-automation",
+                                                              "--hide-scrollbars"])
+        else:
+            browser = pw.chromium.launch(headless=not opts.headed)
         try:
             runs.append(Explorer(browser, url, throttle, opts, noise, run_no).run())
         except Exception as exc:  # noqa: BLE001 - one bad page must not end the batch
@@ -1351,6 +1418,11 @@ def main() -> int:
     ap.add_argument("--periodic-window", type=float, default=PERIODIC_WINDOW_S,
                     help="seconds to sit idle before baseline, recording the page's own "
                          "timer-driven requests (default 30)")
+    ap.add_argument("--match-crawler", action="store_true",
+                    help="mirror Browsertrix 1.14.3's browser: 1360x1020 viewport, scale 1, "
+                         "its user agent and sec-ch-ua headers, its Chromium launch flags")
+    ap.add_argument("--all-raw-urls", action="store_true",
+                    help=f"keep every raw URL per origin+path key, not just {RAW_URLS_PER_KEY}")
     ap.add_argument("--min-host-interval", type=float, default=screen.MIN_HOST_INTERVAL,
                     help="seconds between page loads to one host, including reloads "
                          "(default: the screener's, 5)")

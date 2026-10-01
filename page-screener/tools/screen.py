@@ -370,6 +370,7 @@ class PassResult:
     pre_request_count: int = 0
     pre_requests_norm: set = field(default_factory=set)
     requests_raw: list[str] = field(default_factory=list)
+    request_types: dict[str, str] = field(default_factory=dict)   # raw URL -> resource type
     requests_norm: set[str] = field(default_factory=set)
     inner_text_len: int = 0
     text_content_len: int = 0
@@ -535,7 +536,8 @@ def own_name_of(cand: dict) -> str:
     return (cand.get("name") or "").strip()[:80] or "(unnamed)"
 
 
-def click_is_safe(cand: dict, origin: str) -> tuple[bool, str, str]:
+def click_is_safe(cand: dict, origin: str,
+                  label_max_words: int | None = None) -> tuple[bool, str, str]:
     """Never click transactional, destructive, or navigating controls.
 
     The failure modes are asymmetric: a false positive costs coverage quietly, a
@@ -544,10 +546,15 @@ def click_is_safe(cand: dict, origin: str) -> tuple[bool, str, str]:
 
     Returns (safe, reason, kind). Only `safety-denylist` trips the halt gate; the
     structural kinds fire routinely (every site with a cart link) and are logged.
+
+    label_max_words, when set, applies the text rule only to names of at most that
+    many words: a long name is a card or a whole region named by its content, not a
+    control's label. The structural rules apply regardless.
     """
     # --- text rule: the control's own name only -----------------------------
     own_name = (cand.get("name") or "").strip()
-    match = SAFETY_DENY.search(own_name)
+    short = label_max_words is None or len(own_name.split()) <= label_max_words
+    match = SAFETY_DENY.search(own_name) if short else None
     if match:
         return (False,
                 f"denylist matched {match.group(0)!r} in this control's own name",
@@ -626,7 +633,11 @@ def load_page(ctx, url: str, throttle: HostThrottle, result: PassResult):
     page = ctx.new_page()
     page.on("dialog", lambda d: d.dismiss())
     ctx.on("page", lambda p: p.close())          # never let a popup survive
-    page.on("request", lambda r: result.requests_raw.append(r.url))
+    def record_request(request):
+        result.requests_raw.append(request.url)
+        result.request_types.setdefault(request.url, request.resource_type)
+
+    page.on("request", record_request)
 
     def record_response(request):
         """Status and body size per URL, for the response-based noise rule."""
