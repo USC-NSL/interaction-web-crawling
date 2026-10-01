@@ -133,6 +133,7 @@ def main() -> int:
 
     pages = json.loads((PKG_ROOT / "tools" / "pilot_pages.json").read_text())["pages"]
     jobs = jobs_for(args.phase, pages)
+    args.out = args.out.resolve()        # docker treats a relative -v source as a volume name
     args.out.mkdir(parents=True, exist_ok=True)
     log = args.out / "jobs.jsonl"
 
