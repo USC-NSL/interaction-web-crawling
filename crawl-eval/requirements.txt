@@ -1,0 +1,2 @@
+warcio==1.8.1
+adblock==0.6.0

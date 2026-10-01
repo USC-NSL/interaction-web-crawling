@@ -1,0 +1,45 @@
+{
+  "selection": "page-screener/out/results.json; click: status 200, no bot challenge, stable (or recorded override), robots-allowed, mechanisms include click, reveal_channel includes network; negative: same filters, reveal_channel none. demo = groups A, B and library/design-system pages; production = everything else.",
+  "pages": [
+    {
+      "id": "owlcarousel-lazyload",
+      "url": "https://owlcarousel2.github.io/OwlCarousel2/demos/lazyLoad.html",
+      "role": "click",
+      "tag": "demo",
+      "group": "B",
+      "why": "carousel lazy images (8, third-party placehold.it) revealed by native buttons whose label is on an inner span, so unnamed; needs repeat clicks"
+    },
+    {
+      "id": "swiper-lazyload",
+      "url": "https://swiperjs.com/demos/370-lazy-load-images/core.html",
+      "role": "click",
+      "tag": "demo",
+      "group": "B",
+      "why": "carousel lazy images (7, first-party) behind named prev/next controls; needs repeat clicks"
+    },
+    {
+      "id": "irs-faqs",
+      "url": "https://www.irs.gov/faqs",
+      "role": "click",
+      "tag": "production",
+      "group": "H",
+      "why": "accordion FAQ with 15 named controls; screener saw one click-revealed resource (a webfont used by revealed text); production site with a search form for the safety rules"
+    },
+    {
+      "id": "cagov-departments",
+      "url": "https://www.ca.gov/departments/",
+      "role": "click",
+      "tag": "production",
+      "group": "H",
+      "why": "semantic markup, 3 named controls; clicking loads a Google Translate widget (9 requests): a real click-gated network reveal that is not content"
+    },
+    {
+      "id": "nhs-conditions",
+      "url": "https://www.nhs.uk/conditions/",
+      "role": "negative",
+      "tag": "production",
+      "group": "H",
+      "why": "15 named native controls clicked by the screener with no reveal on any channel: tests false positives and safety skips on a link-dense A-Z page"
+    }
+  ]
+}

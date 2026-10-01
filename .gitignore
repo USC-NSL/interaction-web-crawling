@@ -26,6 +26,13 @@
 !/page-screener/README.md
 !/page-screener/tools/
 
+# ---- Crawl evaluation: tools only; runs/ (WARCs, logs, bundles) stays local ----
+!/crawl-eval/
+/crawl-eval/*
+!/crawl-eval/README.md
+!/crawl-eval/requirements.txt
+!/crawl-eval/tools/
+
 # ---- Never commit, even inside allowed directories ----
 __pycache__/
 *.pyc
