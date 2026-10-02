@@ -66,6 +66,7 @@ def round_robin(pages: list[dict]) -> list[dict]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--limit", type=int, help="explore at most this many pages, then stop")
     args = ap.parse_args()
 
     pages = round_robin(select())
@@ -79,7 +80,10 @@ def main() -> int:
             last_end[rec["host"]] = max(last_end.get(rec["host"], 0), rec["end"])
 
     print(f"{len(pages)} page(s)", flush=True)
+    explored = 0
     for i, p in enumerate(pages, 1):
+        if args.limit is not None and explored >= args.limit:
+            break
         host = urllib.parse.urlsplit(p["url"]).netloc
         label = f"[{i}/{len(pages)}] {p['tag']} {p['url']}"
         page_dir = OUT / p["id"]
@@ -111,6 +115,7 @@ def main() -> int:
             fh.write(json.dumps({"page": p["id"], "job": "explorer", "host": host,
                                  "start": start, "end": end, "exit_code": proc.returncode}) + "\n")
         print(f"{label}: exit {proc.returncode} in {end - start:.0f}s", flush=True)
+        explored += 1
     return 0
 
 

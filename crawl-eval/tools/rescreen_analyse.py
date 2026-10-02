@@ -95,11 +95,19 @@ def analyse(p: dict, blocker: PostHocBlocker) -> tuple[dict, list[dict]]:
                             "kind": kind_of(u, rtype, resp.get("content_type") or ""),
                             "attribution": {k: v.get(k) for k in ("run1", "run2")}}
     by_action = {a: sorted(u for u, g in gated.items() if a in g["actions"]) for a in ACTIONS}
+    # A cap that ends a run before clicking means click content was never looked for.
+    ended = sorted({r["caps"]["ended_by"] for r in runs if r["caps"]["ended_by"]})
+    clicks_done = min((r.get("action_counts") or {}).get("click", 0) for r in runs) if runs else 0
+    coverage = ("complete" if not ended else
+                "no clicks (cap hit before clicking)" if clicks_done == 0 else
+                f"partial ({clicks_done} clicks before cap)")
     click = by_action["click"]
     kinds = Counter(gated[u]["kind"] for u in click)
     row.update({
         "status": "ok" if not errors else f"partial: {errors}",
         "runs_ok": len(runs),
+        "ended_by": ended,
+        "coverage": coverage,
         "gated_total": len(gated),
         "by_action": {a: len(v) for a, v in by_action.items()},
         "click_pool": len(click),
@@ -157,17 +165,19 @@ def main() -> int:
     for tag in ("demo", "production"):
         sel = [r for r in rows if r["tag"] == tag]
         ok = [r for r in sel if r.get("status") == "ok"]
-        none = [r for r in ok if r["gated_total"] == 0]
+        none = [r for r in ok if r["gated_total"] == 0 and r["coverage"] == "complete"]
         print(f"\n{tag}: {len(sel)} pages, {len(ok)} explored cleanly; "
-              f"no gated content: {len(none)}; "
+              f"no gated content (complete coverage): {len(none)}; capped: "
+              f"{sum(1 for r in ok if r['coverage'] != 'complete')}; "
               + ", ".join(f"{a}: {sum(1 for r in ok if r['by_action'][a])}" for a in ACTIONS))
         for r in sorted(sel, key=lambda r: -(r.get("click_pool") or 0)):
             if r.get("status") != "ok":
                 print(f"   !! {r['url']}  {r['status']}")
                 continue
             flag = "  [fonts/icons only]" if r["click_fonts_icons_only"] else ""
-            print(f"   click {r['click_pool']:3}  scroll {r['by_action']['scroll']:3}  "
-                  f"hover {r['by_action']['hover']:3}  {r['url']}  {r['click_kinds']}{flag}")
+            cov = "" if r["coverage"] == "complete" else f"  <{r['coverage']}, {'/'.join(r['ended_by'])}>"
+            print(f"   click {r['click_pool']:3}  scroll {r['by_action']['scroll']:4}  "
+                  f"hover {r['by_action']['hover']:3}  {r['url']}  {r['click_kinds']}{flag}{cov}")
     print(f"\n{len(vetoes)} safety veto(es) -> {OUT / 'vetoes.md'}")
     return 0
 
