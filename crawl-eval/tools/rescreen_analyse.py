@@ -23,9 +23,109 @@ RUNS = PKG_ROOT / "runs"
 OUT = RUNS / "rescreen"
 sys.path.insert(0, str(PKG_ROOT / "tools"))
 from pilot_analyse import PostHocBlocker, is_icon, url_key  # noqa: E402
+from explore import page_id_for  # noqa: E402
+from screen import normalise_request as path_key  # noqa: E402
 
 ACTIONS = ("click", "scroll", "hover")
 ICONISH = re.compile(r"icon|sprite|\.ico$|/symbols?/", re.I)
+CLASSES = ("content", "functional", "presentational", "media", "speculative")
+TRACKING = "residual-tracking"     # outside the five classes: ad/tracking the lists missed
+
+MEDIA_EXT = re.compile(r"\.(m3u8|mpd|ts|m4s|m4a|m4v|mp4|webm|mp3|aac|vtt|srt)$", re.I)
+# Structural shapes of cookie syncs, pixels and analytics beacons the lists missed.
+SYNC_HOST = re.compile(r"(^|[.-])(sync|pixel|beacon)[.-]", re.I)
+SYNC_PATH = re.compile(r"(^|/)(setuid|user_?sync|usersync|psync|sync|pixels?|cs|cookie|"
+                       r"pageview[\w-]*|collect|beacon|track(ing)?|telemetry)(/|$|\?|\.)", re.I)
+ANALYTICS_HOSTS = re.compile(r"(^|\.)(braze\.com|segment\.io|mixpanel\.com|amplitude\.com|"
+                             r"hotjar\.com|fullstory\.com|clarity\.ms|spot\.im)$", re.I)
+PROTECTION = re.compile(r"awswaf\.com|recaptcha|hcaptcha|turnstile|/Waa/", re.I)
+SEARCH = re.compile(r"search|algolia|docsearch|lunr|pagefind|typesense|meilisearch", re.I)
+CONSENT = re.compile(r"cookieyes|onetrust|cookiebot|consent|didomi|trustarc|usercentrics", re.I)
+WIDGET_HOSTS = re.compile(r"(^|\.)(googleapis\.com|maps\.gstatic\.com|youtube\.com|"
+                          r"ytimg\.com|vimeo\.com|player\.vimeo\.com|twitter\.com|x\.com)$", re.I)
+ROUTE_CHUNK = re.compile(r"component---|\.md\.[\w-]+\.js$|/chunks/pages/|/chunks/app/", re.I)
+
+
+def data_route(url: str) -> str | None:
+    """The route a router data request is for, or None if it is not router data."""
+    parts = urllib.parse.urlsplit(url)
+    m = re.match(r"^/_next/data/[^/]+(/.*)\.json$", parts.path)
+    if m:                                               # Next.js pages router
+        route = re.sub(r"/index$", "", m.group(1)) or "/"
+        return route
+    if "_rsc=" in parts.query:                          # Next.js app router (RSC)
+        return parts.path
+    m = re.match(r"^/page-data(/.*)?/page-data\.json$", parts.path)
+    if m:                                               # Gatsby; the home page is "index"
+        return re.sub(r"^/index$", "/", m.group(1) or "/")
+    m = re.match(r"^(.*)/__data\.json$", parts.path)   # SvelteKit
+    if m:
+        return m.group(1) or "/"
+    return None
+
+
+def same_route(a: str, b: str) -> bool:
+    norm = lambda p: (p.rstrip("/") or "/").lower()  # noqa: E731
+    return norm(a) == norm(b)
+
+
+def classify(u: str, g: dict, page_url: str, noise: set[str], meta: dict) -> tuple[str, str]:
+    """(class, rule) for one gated resource. First matching rule wins."""
+    rtype, ctype = g["type"], (g["content_type"] or "").lower()
+    host = urllib.parse.urlsplit(u).netloc
+    page = urllib.parse.urlsplit(page_url)
+    target = (g.get("target") or "")
+    purpose = (meta.get("purpose") or "").lower()
+    action = g["first_action"]
+    js = rtype == "script" or "javascript" in ctype
+    parts = urllib.parse.urlsplit(u)
+    if path_key(u) in noise:
+        return TRACKING, "T1 explorer noise rule (host or sync/pixel path) after list filtering"
+    if SYNC_HOST.search(host) or SYNC_PATH.search(parts.path):
+        return TRACKING, "T2 cookie-sync / pixel / beacon URL shape"
+    if ANALYTICS_HOSTS.search(host):
+        return TRACKING, "T3 analytics or ad SDK host"
+    if "prefetch" in purpose or "prerender" in purpose:
+        return "speculative", f"S1 request carried Sec-Purpose/Purpose: {purpose}"
+    if rtype not in ("document",) and "text/html" in ctype and rtype in ("other", "fetch", "xhr"):
+        return "speculative", "S2 another page's HTML fetched outside navigation"
+    route = data_route(u)
+    if route is not None and host == page.netloc and not same_route(route, page.path):
+        return "speculative", f"S3 router data for another route ({route})"
+    on_link = bool(re.search(r"(^|[ >])a([.#:\[]|$)", target.split(">")[-1].strip()))
+    if js and host == page.netloc and action in ("hover", "scroll") and (ROUTE_CHUNK.search(u) or on_link):
+        return "speculative", "S4 same-site route code loaded by hovering/scrolling links"
+    if host == page.netloc and action == "hover" and on_link and rtype in ("fetch", "xhr") \
+            and "json" in ctype:
+        return "speculative", "S5 same-site data loaded by hovering a link"
+    if ctype.startswith(("video/", "audio/")) or "mpegurl" in ctype or "dash+xml" in ctype \
+            or rtype == "media" or MEDIA_EXT.search(urllib.parse.urlsplit(u).path):
+        return "media", "M1 media type, segment or manifest"
+    if rtype == "font" or "font" in ctype:
+        return "presentational", "P1 font"
+    if ("svg" in ctype or "icon" in ctype) and (ICONISH.search(u) or (g.get("size") or 0) < 4096):
+        return "presentational", "P2 icon (svg/icon type, icon path or under 4KB)"
+    if rtype == "stylesheet" or "text/css" in ctype:
+        return "presentational", "P3 stylesheet"
+    if SEARCH.search(u) or SEARCH.search(target):
+        return "functional", "F1 search (URL or triggering control)"
+    if CONSENT.search(host + parts.path) or CONSENT.search(target):
+        return "functional", "F2 consent manager (host/path or triggering control)"
+    if PROTECTION.search(u):
+        return "functional", "F5 bot/abuse protection"
+    if WIDGET_HOSTS.search(host) and rtype != "image":
+        return "functional", "F3 embedded widget API/script (maps, video player)"
+    if js:
+        return "functional", "F4 script (feature code)"
+    if rtype == "image" or ctype.startswith("image/"):
+        return "content", "C1 image"
+    if route is not None:
+        return "content", f"C2 router data for this page ({route})"
+    if rtype in ("fetch", "xhr"):
+        return "content", "C3 fetch/xhr data"
+    if rtype == "document":
+        return "content", "C4 subdocument"
+    return "content", f"C9 fallback (type {rtype or '?'}, {ctype or 'no content-type'})"
 
 
 def explorer_result(page_dir: Path) -> dict | None:
@@ -37,12 +137,16 @@ def explorer_result(page_dir: Path) -> dict | None:
 
 
 def pages() -> list[dict]:
-    out = []
+    out, urls = [], set()
     for p in json.loads((OUT / "pages.json").read_text()):
+        if p.get("pilot"):
+            continue                    # re-run pilot pages are picked up below
         out.append({**p, "dir": OUT / p["id"]})
     for p in json.loads((PKG_ROOT / "tools" / "pilot_pages.json").read_text())["pages"]:
+        rerun = OUT / page_id_for(p["url"])
+        page_dir = rerun if (rerun / "done.json").exists() else RUNS / "pilot2" / p["id"] / "explorer"
         out.append({"id": p["id"], "url": p["url"], "group": p["group"], "tag": p["tag"],
-                    "dir": RUNS / "pilot2" / p["id"] / "explorer", "pilot": True})
+                    "dir": page_dir, "pilot": True})
     return out
 
 
@@ -71,6 +175,13 @@ def analyse(p: dict, blocker: PostHocBlocker) -> tuple[dict, list[dict]]:
         for raw, t in (r.get("raw_types") or {}).items():
             types.setdefault(url_key(raw), t)
     source = runs[0]["settled_url"] if runs else p["url"]
+    meta: dict[str, dict] = {}
+    noise: set[str] = set()
+    for r in runs:
+        for raw, m in (r.get("request_meta") or {}).items():
+            meta.setdefault(url_key(raw), m)
+        for n in r.get("noise_filtered") or []:
+            noise.add(path_key(n["url"]))
 
     gated, removed = {}, []
     for key, v in ex["stable_new_content"].items():
@@ -89,11 +200,17 @@ def analyse(p: dict, blocker: PostHocBlocker) -> tuple[dict, list[dict]]:
                 if hit:
                     removed.append({"url": u, "why": "blocked", "list": hit["list"], "rule": hit["rule"]})
                     continue
+                run1 = v.get("run1") or v.get("run2") or {}
                 gated[u] = {"actions": sorted(actions), "type": rtype,
+                            "first_action": run1.get("action"), "target": run1.get("target"),
+                            "initiator": {k: (meta.get(u) or {}).get(k)
+                                          for k in ("initiator_type", "initiator_url", "purpose")},
                             "content_type": resp.get("content_type") or "", "status": resp.get("status"),
                             "size": resp.get("size"),
                             "kind": kind_of(u, rtype, resp.get("content_type") or ""),
                             "attribution": {k: v.get(k) for k in ("run1", "run2")}}
+    for u, g in gated.items():
+        g["class"], g["rule"] = classify(u, g, source, noise, meta.get(u) or {})
     by_action = {a: sorted(u for u, g in gated.items() if a in g["actions"]) for a in ACTIONS}
     # A cap that ends a run before clicking means click content was never looked for.
     ended = sorted({r["caps"]["ended_by"] for r in runs if r["caps"]["ended_by"]})
@@ -114,6 +231,10 @@ def analyse(p: dict, blocker: PostHocBlocker) -> tuple[dict, list[dict]]:
         "click_kinds": dict(kinds),
         "click_fonts_icons_only": bool(click) and set(kinds) <= {"font", "icon/svg"},
         "click_urls": click,
+        "click_classes": dict(Counter(gated[u]["class"] for u in click)),
+        "classes_any": dict(Counter(g["class"] for g in gated.values())),
+        "class_by_action": {a: dict(Counter(gated[u]["class"] for u in by_action[a])) for a in ACTIONS},
+        "has_request_meta": bool(meta),
         "unstable_new": len(ex.get("unstable_new_content", {})),
         "removed": removed,
         "caps_hit": ex.get("caps_hit"),

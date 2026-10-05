@@ -67,9 +67,16 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit", type=int, help="explore at most this many pages, then stop")
+    ap.add_argument("--extra", action="append", default=[], metavar="URL",
+                    help="also explore this pilot page (its result then supersedes pilot2)")
     args = ap.parse_args()
 
-    pages = round_robin(select())
+    selected = select()
+    for url in args.extra:
+        pilot = next(p for p in PILOT if p["url"] == url)
+        selected.append({"id": page_id_for(url), "url": url, "group": pilot["group"],
+                         "tag": pilot["tag"], "screener_stable": None, "pilot": True})
+    pages = round_robin(selected)
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "pages.json").write_text(json.dumps(pages, indent=2))
     log = OUT / "jobs.jsonl"
