@@ -628,9 +628,15 @@ def install_nav_guard(page, target_url: str, result: PassResult, armed: dict) ->
     page.route("**/*", handler)
 
 
-def load_page(ctx, url: str, throttle: HostThrottle, result: PassResult):
-    """Navigate, settle to networkidle, and capture the served HTML."""
+def load_page(ctx, url: str, throttle: HostThrottle, result: PassResult, on_page=None):
+    """Navigate, settle to networkidle, and capture the served HTML.
+
+    on_page, if given, is called with the new page before navigation, so a caller can
+    attach instrumentation that must see the load's own requests.
+    """
     page = ctx.new_page()
+    if on_page is not None:
+        on_page(page)
     page.on("dialog", lambda d: d.dismiss())
     ctx.on("page", lambda p: p.close())          # never let a popup survive
     def record_request(request):

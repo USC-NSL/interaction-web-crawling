@@ -73,6 +73,13 @@ SETTLE_QUIET_MS = 500             # ... then until no request has been in flight
 SETTLE_MAX_MS = 5000
 RESTORE_LOSS_RATIO = 2.0          # see click_element: undoing a collapsing click
 TEXT_FRAGMENT_LOG_LIMIT = 2000
+# Per-phase budgets: shares of --max-actions and --max-seconds, so no phase can spend
+# another's. Phase time is the wall time spent inside that phase's actions; the idle
+# window, baseline and discovery are not charged. When exploration is otherwise done
+# and click is capped, the scroll and hover budget left unused moves to click.
+PHASES = ("scroll", "hover", "click")
+PHASE_SHARES = {"scroll": (0.10, 0.20), "hover": (0.30, 0.25), "click": (0.60, 0.55)}
+BACKSTOP_FACTOR = 2.0             # run-level wall clock, a safety net beyond the phases
 RAW_URLS_PER_KEY = 5              # raw URLs kept per origin+path key; --all-raw-urls lifts it
 LABEL_MAX_WORDS = 4               # the denylist applies only to names this short
 
@@ -124,7 +131,9 @@ ACTION_ACCOUNTING = (
     "one action per hover, per click (restore clicks included), and per scroll sweep "
     "of one container; individual scroll steps are logged as iterations of their sweep "
     "and do not count toward the cap, so one infinite-scroll page cannot spend the "
-    "whole budget before hover and click run")
+    "whole budget before hover and click run. Budgets are per phase (PHASE_SHARES of "
+    "max_actions and max_seconds); unused scroll and hover budget moves to click once "
+    "exploration is otherwise done")
 
 CLICK_LISTENER_TYPES = {"click", "mousedown", "mouseup", "pointerdown", "pointerup",
                         "dblclick", "auxclick"}
@@ -392,7 +401,16 @@ class Explorer:
         self.run_no = run_no
         self.result = PassResult(name=f"explore-run-{run_no}")
         self.started = time.time()
-        self.deadline = self.started + opts.max_seconds
+        self.backstop = self.started + BACKSTOP_FACTOR * opts.max_seconds
+        actions = {p: int(opts.max_actions * a) for p, (a, _s) in PHASE_SHARES.items()}
+        actions["click"] = opts.max_actions - actions["scroll"] - actions["hover"]
+        self.budget = {p: {"actions": actions[p], "seconds": opts.max_seconds * PHASE_SHARES[p][1]}
+                       for p in PHASES}
+        self.spent = {p: {"actions": 0, "seconds": 0.0} for p in PHASES}
+        self.phase_caps: dict[str, str | None] = {p: None for p in PHASES}
+        self.phase: str | None = None
+        self.phase_t0 = 0.0
+        self.donation: dict | None = None
         # norm url -> {first_action, raw, resource_type, t}
         self.requests: dict[str, dict] = {}
         self.inflight: set = set()
@@ -423,6 +441,9 @@ class Explorer:
         # attribution and novelty for the rest of the session.
         self.periodic_patterns: set[str] = set()
         self.raw_types: dict[str, str] = {}    # raw URL -> resource type, first seen
+        # raw URL -> CDP initiator, CDP resource type, and Sec-Purpose/Purpose header
+        self.request_meta: dict[str, dict] = {}
+        self._rid_url: dict[str, str] = {}
         self.periodic_window_hits: set[str] = set()
         self.recording_periodic = False
         self.periodic_excluded: dict[str, int] = {}
@@ -463,6 +484,42 @@ class Explorer:
             rec["raw"].append(url)
         self.raw_types.setdefault(url, request.resource_type)
 
+    def _attach_network_cdp(self, page) -> None:
+        """Initiator and purpose per request, which page request events do not carry."""
+        try:
+            cdp = page.context.new_cdp_session(page)
+            cdp.on("Network.requestWillBeSent", self._on_cdp_request)
+            cdp.on("Network.requestWillBeSentExtraInfo", self._on_cdp_extra)
+            cdp.send("Network.enable")
+            self._net_cdp = cdp
+        except Exception:  # noqa: BLE001 - instrumentation must never break a page
+            pass
+
+    @staticmethod
+    def _purpose(headers: dict) -> str | None:
+        low = {k.lower(): v for k, v in (headers or {}).items()}
+        return low.get("sec-purpose") or low.get("purpose")
+
+    def _on_cdp_request(self, ev: dict) -> None:
+        req = ev.get("request") or {}
+        url = req.get("url", "")
+        if not url.startswith("http"):
+            return
+        init = ev.get("initiator") or {}
+        frames = ((init.get("stack") or {}).get("callFrames") or [])
+        init_url = init.get("url") or next((f["url"] for f in frames if f.get("url")), None)
+        rec = self.request_meta.setdefault(url, {"initiator_type": init.get("type"),
+                                                 "initiator_url": init_url,
+                                                 "cdp_type": ev.get("type"), "purpose": None})
+        rec["purpose"] = rec["purpose"] or self._purpose(req.get("headers"))
+        self._rid_url[ev.get("requestId", "")] = url
+
+    def _on_cdp_extra(self, ev: dict) -> None:
+        url = self._rid_url.get(ev.get("requestId", ""))
+        if url and url in self.request_meta:
+            rec = self.request_meta[url]
+            rec["purpose"] = rec["purpose"] or self._purpose(ev.get("headers"))
+
     def _on_request_done(self, request) -> None:
         self.inflight.discard(request)
         self.last_net_activity = time.time()
@@ -500,14 +557,34 @@ class Explorer:
 
     # ---- action bookkeeping ---------------------------------------------------
 
+    def enter(self, phase: str) -> None:
+        self.phase, self.phase_t0 = phase, time.time()
+
+    def leave(self) -> None:
+        if self.phase:
+            self.spent[self.phase]["seconds"] += time.time() - self.phase_t0
+        self.phase = None
+
+    def phase_seconds(self, phase: str) -> float:
+        extra = time.time() - self.phase_t0 if self.phase == phase else 0.0
+        return self.spent[phase]["seconds"] + extra
+
     def caps_reached(self) -> bool:
+        """The current phase's own budget, or the run-level backstop."""
         if self.cap_hit:
             return True
-        if self.action_count >= self.opts.max_actions:
-            self.cap_hit = "actions"
-        elif time.time() >= self.deadline:
-            self.cap_hit = "wall_clock"
-        return self.cap_hit is not None
+        if time.time() >= self.backstop:
+            self.cap_hit = "wall_clock_backstop"
+            return True
+        p = self.phase
+        if p is None:
+            return False
+        if not self.phase_caps[p]:
+            if self.spent[p]["actions"] >= self.budget[p]["actions"]:
+                self.phase_caps[p] = "actions"
+            elif self.phase_seconds(p) >= self.budget[p]["seconds"]:
+                self.phase_caps[p] = "wall_clock"
+        return self.phase_caps[p] is not None
 
     def begin(self, action: str, target: str, iteration: int, counts: bool = True,
               **extra) -> dict:
@@ -518,6 +595,8 @@ class Explorer:
         self.current = record["id"]
         if counts:
             self.action_count += 1
+            if self.phase:
+                self.spent[self.phase]["actions"] += 1
         return record
 
     def settle(self, min_ms: int = SETTLE_MIN_MS, max_ms: int = SETTLE_MAX_MS) -> None:
@@ -626,6 +705,40 @@ class Explorer:
         finally:
             self.guard_on = True
         return "reload"
+
+    def donate_to_click(self) -> None:
+        """Exploration is otherwise done: give click what scroll and hover left unused."""
+        if not self.phase_caps["click"] or self.cap_hit:
+            return
+        gift = {k: sum(max(0, self.budget[p][k] - self.spent[p][k]) for p in ("scroll", "hover"))
+                for k in ("actions", "seconds")}
+        if gift["actions"] < 1 or gift["seconds"] <= 0:
+            return
+        for p in ("scroll", "hover"):
+            for k in ("actions", "seconds"):
+                self.budget[p][k] = min(self.budget[p][k], self.spent[p][k])
+        for k in ("actions", "seconds"):
+            self.budget["click"][k] += gift[k]
+        self.phase_caps["click"] = None
+        self.donation = {**gift, "click_passes": 0}
+        for pass_no in range(1, self.opts.max_passes + 1):
+            self.mark_listener_elements()
+            new_click = [(f, c) for f, c in self.discover()
+                         if c["click_ok"] and c["id"] not in self.processed_click]
+            if not new_click:
+                break
+            self.donation["click_passes"] += 1
+            self.enter("click")
+            for frame, cand in new_click:
+                if self.caps_reached():
+                    break
+                self.processed_click.add(cand["id"])
+                if self.veto(cand):
+                    continue
+                self.click_element(frame, cand, pass_no)
+            self.leave()
+            if self.phase_caps["click"] or self.cap_hit:
+                break
 
     # ---- CDP listener discovery -----------------------------------------------
 
@@ -740,8 +853,7 @@ class Explorer:
                 record["budget_hit"] = True
                 record["ended"] = "budget"
                 break
-            if time.time() >= self.deadline:
-                self.cap_hit = "wall_clock"
+            if self.caps_reached():
                 record["ended"] = "wall_clock"
                 break
             n += 1
@@ -946,7 +1058,8 @@ class Explorer:
         ctx.set_default_navigation_timeout(NAV_TIMEOUT_MS)
         try:
             # 1. Baseline. The screener's loader: goto, networkidle, its own guard.
-            page = load_page(ctx, self.url, self.throttle, self.result)
+            page = load_page(ctx, self.url, self.throttle, self.result,
+                             on_page=self._attach_network_cdp)
             self.page = page
             self.settled_url = self.result.settled_url or self.url
             self.target_norm = normalise_request(self.settled_url)
@@ -1007,17 +1120,23 @@ class Explorer:
                         "new_click": len(new_click)}
                 self.discovery_passes.append(info)
                 scroll_before = len(self.scroll_containers)
-                if not self.caps_reached():
-                    self.scroll_pass()
+                # scroll_pass checks the cap only where there is something left to scroll,
+                # so a phase that used its budget exactly is not reported as capped
+                self.enter("scroll")
+                self.scroll_pass()
+                self.leave()
                 info["scroll_sweeps"] = len(self.scroll_containers) - scroll_before
                 if pass_no > 1 and not new_hover and not new_click and not info["scroll_sweeps"]:
                     info["result"] = "nothing new; done"
                     break
+                self.enter("hover")
                 for frame, cand in new_hover:
                     if self.caps_reached():
                         break
                     self.processed_hover.add(cand["id"])
                     self.hover(frame, cand, pass_no)
+                self.leave()
+                self.enter("click")
                 for frame, cand in new_click:
                     if self.caps_reached():
                         break
@@ -1025,12 +1144,16 @@ class Explorer:
                     if self.veto(cand):
                         continue
                     self.click_element(frame, cand, pass_no)
-                if self.caps_reached():
+                self.leave()
+                if self.cap_hit or all(self.phase_caps.values()):
                     break
+            self.donate_to_click()
             # Anything still loading lands under the last action.
             self.settle(min_ms=2000, max_ms=8000)
             self.blocked_seen = self.blocked_norms()
-            ended_by = self.cap_hit or ("discovery_passes" if passes_cap_hit else None)
+            capped = [f"{p}:{c}" for p, c in self.phase_caps.items() if c]
+            ended_by = (self.cap_hit or ",".join(capped)
+                        or ("discovery_passes" if passes_cap_hit else None))
             return self.report(baseline_norm, ended_by)
         finally:
             try:
@@ -1159,6 +1282,7 @@ class Explorer:
             "baseline_raw": sorted({raw for u in baseline_norm for raw in self.requests[u]["raw"]}),
             "baseline_status": {u: (meta.get(u) or {}).get("status") for u in baseline_norm},
             "raw_types": dict(sorted(self.raw_types.items())),
+            "request_meta": dict(sorted(self.request_meta.items())),
             "baseline_noise": baseline_noise,
             "new_content": new_content,
             "baseline_size_filtered": baseline_size,
@@ -1170,7 +1294,12 @@ class Explorer:
             "all_requests_raw": sorted({raw for r in self.requests.values() for raw in r["raw"]}),
             "caps": {"ended_by": ended_by, "actions_used": self.action_count,
                      "max_actions": self.opts.max_actions, "max_seconds": self.opts.max_seconds,
-                     "max_passes": self.opts.max_passes},
+                     "max_passes": self.opts.max_passes,
+                     "phase_caps": self.phase_caps,
+                     "phase_budgets": self.budget,
+                     "phase_spent": {p: {"actions": v["actions"], "seconds": round(v["seconds"], 1)}
+                                     for p, v in self.spent.items()},
+                     "donation_to_click": self.donation},
             "blocked_ads": blocked,
             "blocked_ads_total": len(self.result.blocked_requests),
             "periodic_patterns": sorted(self.periodic_patterns),
