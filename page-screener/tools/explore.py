@@ -262,6 +262,9 @@ DISCOVER_JS = r"""
         el.setAttribute('data-explore-id', P + '-' + window.__exploreSeq);
       }
       const anchor = el.closest('a');
+      // a link to another document: hovering it mostly triggers prefetch
+      const linksAway = !!(anchor && anchor.href && /^https?:/.test(anchor.href) &&
+                           anchor.href.split('#')[0] !== location.href.split('#')[0]);
       out.push({
         id: el.getAttribute('data-explore-id'),
         tag: el.tagName.toLowerCase(),
@@ -270,13 +273,14 @@ DISCOVER_JS = r"""
         nearby: nearby(el),
         in_form: !!el.closest('form'),
         in_consent: inConsent(el),
+        links_away: linksAway,
         is_submit: (el.getAttribute('type') || '').toLowerCase() === 'submit',
         in_method_post: !!el.closest('[method="post" i]'),
         href: anchor ? (anchor.getAttribute('href') || '') : '',
         target: anchor ? (anchor.getAttribute('target') || '') : '',
         role: el.getAttribute('role') || '',
         click_ok: nativeClick || lstClick || cursorPointer,
-        hover_ok: nativeHover || lstHover,
+        hover_ok: (nativeHover || lstHover) && !linksAway,
         via: [nativeClick ? 'native-click' : null, nativeHover ? 'native-hover' : null,
               lstClick ? 'cdp-listener-click' : null, lstHover ? 'cdp-listener-hover' : null,
               cursorPointer ? 'cursor-pointer' : null].filter(Boolean),
