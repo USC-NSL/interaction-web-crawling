@@ -83,6 +83,15 @@ BACKSTOP_FACTOR = 2.0             # run-level wall clock, a safety net beyond th
 RAW_URLS_PER_KEY = 5              # raw URLs kept per origin+path key; --all-raw-urls lifts it
 LABEL_MAX_WORDS = 4               # the denylist applies only to names this short
 
+
+# Request guard: after load, only GET and HEAD leave the page, plus these reads.
+# Algolia's query endpoints are POST by design (DocSearch on the Astro docs, the
+# Gymshark product search in the 44-page data); a query changes nothing.
+WRITE_ALLOWANCES = [
+    (re.compile(r"(^|\.)algolia(net)?\.(net|com|io)$", re.I),
+     re.compile(r"^/1/indexes/[^/]+/(query|queries)$"), "Algolia search query"),
+]
+
 # --- --match-crawler: mirror Browsertrix 1.14.3's browser (src/util/browser.ts) ---
 # Brave Origin 149 under Xvfb, GEOMETRY=1360x1020x16, puppeteer defaultViewport of the
 # full screen (recording mode, no height offset), deviceScaleFactor 1 (puppeteer
@@ -441,6 +450,8 @@ class Explorer:
         # attribution and novelty for the rest of the session.
         self.periodic_patterns: set[str] = set()
         self.raw_types: dict[str, str] = {}    # raw URL -> resource type, first seen
+        self.blocked_writes: list[dict] = []   # non-GET/HEAD requests the guard aborted
+        self.allowed_writes: list[dict] = []   # ... and the ones an allowance let through
         # raw URL -> CDP initiator, CDP resource type, and Sec-Purpose/Purpose header
         self.request_meta: dict[str, dict] = {}
         self._rid_url: dict[str, str] = {}
@@ -524,6 +535,41 @@ class Explorer:
         self.inflight.discard(request)
         self.last_net_activity = time.time()
 
+    @staticmethod
+    def graphql_kind(body: str | None) -> str | None:
+        """'query' only when every operation in the body is a query; else None."""
+        if not body:
+            return None
+        try:
+            data = json.loads(body)
+        except ValueError:
+            return None
+        kinds = set()
+        for op in data if isinstance(data, list) else [data]:
+            query = op.get("query") if isinstance(op, dict) else None
+            if not isinstance(query, str):
+                return None                     # persisted query or not GraphQL: unsure
+            text = re.sub(r"#[^\n]*", "", query).strip()
+            if re.search(r"(^|[}\s])(mutation|subscription)\b", text):
+                return None
+            if not (text.startswith("{") or re.match(r"query\b", text)):
+                return None
+            kinds.add("query")
+        return "query" if kinds == {"query"} else None
+
+    def write_allowance(self, request) -> str | None:
+        parts = urllib.parse.urlsplit(request.url)
+        for host_re, path_re, why in WRITE_ALLOWANCES:
+            if host_re.search(parts.netloc) and path_re.search(parts.path):
+                return why
+        try:
+            body = request.post_data
+        except Exception:  # noqa: BLE001 - binary body
+            body = None
+        if self.graphql_kind(body) == "query":
+            return "GraphQL query (no mutation or subscription)"
+        return None
+
     def _guard(self, route, request) -> None:
         """Stricter than the screener's guard, layered on top of it.
 
@@ -536,6 +582,27 @@ class Explorer:
         Everything else falls back to the screener's handler.
         """
         try:
+            if self.guard_on and request.method not in ("GET", "HEAD"):
+                why = self.write_allowance(request)
+                act = self.actions[self.current - 1] if self.current else {}
+                record = {"method": request.method, "url": request.url,
+                          "resource_type": request.resource_type, "action_id": self.current,
+                          "action": act.get("action", "baseline"), "target": act.get("target")}
+                if why:
+                    self.allowed_writes.append({**record, "allowance": why})
+                else:
+                    try:
+                        buf = request.post_data_buffer or b""
+                    except Exception:  # noqa: BLE001
+                        buf = b""
+                    record["body"] = buf[:200].decode("utf-8", "replace")
+                    self.blocked_writes.append(record)
+                    if request.is_navigation_request() and request.frame == self.page.main_frame:
+                        # a form POST: abort would commit an error page; 204 keeps the page
+                        route.fulfill(status=204, body="")
+                    else:
+                        route.abort()
+                    return
             if (self.guard_on and request.is_navigation_request()
                     and request.frame == self.page.main_frame):
                 self.blocked_navigations.append({"url": request.url, "action": self.current})
@@ -1283,6 +1350,8 @@ class Explorer:
             "baseline_status": {u: (meta.get(u) or {}).get("status") for u in baseline_norm},
             "raw_types": dict(sorted(self.raw_types.items())),
             "request_meta": dict(sorted(self.request_meta.items())),
+            "blocked_writes": self.blocked_writes,
+            "allowed_writes": self.allowed_writes,
             "baseline_noise": baseline_noise,
             "new_content": new_content,
             "baseline_size_filtered": baseline_size,
