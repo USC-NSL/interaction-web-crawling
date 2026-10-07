@@ -232,7 +232,7 @@ def ts(rec: dict) -> float:
     return datetime.fromisoformat(rec["timestamp"].replace("Z", "+00:00")).timestamp()
 
 
-SKIP_RE = re.compile(r"^Skipping element \((form|submit|path|label \"([^\"]*)\": (.*))\): ")
+SKIP_RE = re.compile(r"^Skipping element \((form|submit|path|consent|label \"([^\"]*)\": (.*))\): ")
 
 
 def revealclick_metrics(log: list[dict]) -> dict:

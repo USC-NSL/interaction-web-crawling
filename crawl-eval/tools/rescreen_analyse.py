@@ -129,6 +129,30 @@ def classify(u: str, g: dict, page_url: str, noise: set[str], meta: dict) -> tup
     return "content", f"C9 fallback (type {rtype or '?'}, {ctype or 'no content-type'})"
 
 
+STATE_CHANGE = re.compile(r"cart|basket|\bbag\b|wish\s?list|favou?rite|rating|\brate\b|vote|review|"
+                          r"helpful|feedback|comment|reply|subscri|sign\s?up|newsletter|consent|"
+                          r"preference|login|signin|account|profile|order|checkout|mutation", re.I)
+TELEMETRY = re.compile(r"analytics|collect|beacon|track|telemetry|metrics|log(ging)?\b|events?\b|"
+                       r"pixel|rum\b|stats|insights|sentry|datadog|newrelic|/g/collect|/v\d+/[a-z]+/batch",
+                       re.I)
+READ_LIKE = re.compile(r"search|query|queries|graphql|/list|/get|/fetch|/find|/lookup|"
+                       r"/recommend|/products|/items\?|/content", re.I)
+
+
+def classify_block(b: dict) -> tuple[str, str]:
+    """Group a blocked write: would it have changed state, or was it a lost reveal?"""
+    text = b["url"] + " " + (b.get("body") or "")
+    if b.get("resource_type") == "document":
+        return "state change", "form submission"
+    if STATE_CHANGE.search(text):
+        return "state change", "URL/body names a state change"
+    if b.get("resource_type") == "ping" or TELEMETRY.search(b["url"]):
+        return "telemetry", "beacon or analytics endpoint"
+    if READ_LIKE.search(text):
+        return "possible lost reveal", "read-like endpoint or body (search/query/list)"
+    return "undetermined", "no rule matched"
+
+
 def explorer_result(page_dir: Path) -> dict | None:
     for f in sorted(page_dir.glob("*.json")):
         d = json.loads(f.read_text())
@@ -269,6 +293,19 @@ def analyse(p: dict, blocker: PostHocBlocker) -> tuple[dict, list[dict]]:
                    "href": v.get("href"), "target": v.get("target")}
             seen[k] = rec
             vetoes.append(rec)
+    blocks: dict[tuple, dict] = {}
+    for r in runs:
+        for b in r.get("blocked_writes") or []:
+            key = (b["method"], b["url"].split("?")[0])
+            rec = blocks.setdefault(key, {**b, "count": 0, "runs": set()})
+            rec["count"] += 1
+            rec["runs"].add(r["run"])
+    for rec in blocks.values():
+        rec["group"], rec["group_rule"] = classify_block(rec)
+        rec["runs"] = sorted(rec["runs"])
+    row["blocked_writes"] = sorted(blocks.values(), key=lambda b: (b["group"], b["url"]))
+    row["allowed_writes"] = sorted({(w["method"], w["url"].split("?")[0], w["allowance"])
+                                    for r in runs for w in r.get("allowed_writes") or []})
     row["unsuitable_skips"] = sum(1 for items in (ex.get("safety_vetoes") or {}).values()
                                   for v in items if v.get("kind") == "unsuitable")
     row["safety_vetoes"] = len(vetoes)
