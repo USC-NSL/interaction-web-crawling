@@ -83,12 +83,24 @@ BACKSTOP_FACTOR = 2.0             # run-level wall clock, a safety net beyond th
 RAW_URLS_PER_KEY = 5              # raw URLs kept per origin+path key; --all-raw-urls lifts it
 LABEL_MAX_WORDS = 4               # the screener's single-word denylist: names this short only
 
-# Phrase rules, applied at any name length: these name the action itself, so a long
-# name (a product title inside "add ... to cart") must not switch them off.
+# The request guard is the primary defense; these cover what it cannot see. Phrase
+# rules are specific and rarely innocent, so they apply at any name length (a product
+# title inside "add ... to cart" must not switch them off). Short rules are generic
+# words common in harmless text, so they apply only to names of LABEL_MAX_WORDS or
+# fewer, like the screener's single-word list.
 PHRASE_DENY = re.compile(
     r"\b(add\b.{0,80}?\bto\s+(cart|bag|basket|wish\s?list|favou?rites?)|buy|check\s?out|"
-    r"wish\s?list|favou?rites?|rate\s+this|rate|ratings?|vote|not\s+helpful|helpful|like|"
-    r"follow|reply|comment|report|save)\b", re.IGNORECASE | re.DOTALL)
+    r"wish\s?list|favou?rites?|rate\s+this|rate|ratings?|vote|not\s+helpful|helpful)\b",
+    re.IGNORECASE | re.DOTALL)
+SHORT_DENY = re.compile(r"\b(report|like|save|follow|comment|reply)\b", re.IGNORECASE)
+
+
+def deny_rule(prefix: str, matched: str) -> str:
+    """A stable rule id for counting: 'add ... to cart' whatever the product."""
+    text = re.sub(r"\s+", " ", matched.lower()).strip()
+    if text.startswith("add ") and " to " in text:
+        text = "add ... to " + text.rsplit(" to ", 1)[1]
+    return f"{prefix}:{text}"
 CONSENT_WORDS = re.compile(r"\b(cookies?|consent)\b", re.IGNORECASE)
 CONSENT_ACTIONS = re.compile(r"\b(accept|agree|allow|reject)\b", re.IGNORECASE)
 
@@ -1123,25 +1135,35 @@ class Explorer:
         """Apply the safety rules. True if the click is refused."""
         name = (cand.get("name") or "").strip()
         phrase = PHRASE_DENY.search(name)
+        short = (SHORT_DENY.search(name) if len(name.split()) <= LABEL_MAX_WORDS else None)
+        rule = None
         if phrase:
-            safe, kind = False, "safety-denylist"
+            safe, kind, rule = False, "safety-denylist", deny_rule("phrase", phrase.group(0))
             reason = f"phrase rule matched {phrase.group(0)!r} in this control's own name"
         elif cand.get("in_consent"):
-            safe, kind = False, "safety-denylist"
+            safe, kind, rule = False, "safety-denylist", "consent:banner"
             reason = "inside a cookie/consent banner"
         elif CONSENT_ACTIONS.search(name) and CONSENT_WORDS.search(name):
-            safe, kind = False, "safety-denylist"
+            safe, kind, rule = False, "safety-denylist", "consent:name"
             reason = "consent control (accept/agree/allow/reject with cookie/consent)"
+        elif short:
+            safe, kind, rule = False, "safety-denylist", deny_rule("short", short.group(0))
+            reason = f"short-name rule matched {short.group(0)!r} in this control's own name"
         else:
             safe, reason, kind = click_is_safe(cand, self.settled_url,
                                                label_max_words=LABEL_MAX_WORDS)
+            if not safe:
+                word = SAFETY_DENY.search(name) if kind == "safety-denylist" else None
+                rule = deny_rule("word", word.group(0)) if word else kind
         if safe:
             return False
         record = {"target": cand["selector"], "tag": cand["tag"], "name": own_name_of(cand),
                   "nearby": cand["nearby"][:120], "href": (cand.get("href") or "")[:160],
-                  "sources": cand.get("sources", []), "reason": reason, "kind": kind}
+                  "sources": cand.get("sources", []), "reason": reason, "kind": kind,
+                  "rule": rule}
         if kind == "safety-denylist":
-            term = PHRASE_DENY.search(name) or SAFETY_DENY.search(own_name_of(cand))
+            term = PHRASE_DENY.search(name) or SHORT_DENY.search(name) \
+                or SAFETY_DENY.search(own_name_of(cand))
             record["term"] = term.group(0).lower()[:40] if term else reason[:40]
             self.safety_skips.append(record)
         self.vetoes.append(record)
