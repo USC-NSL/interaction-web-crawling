@@ -80,6 +80,14 @@ TEXT_FRAGMENT_LOG_LIMIT = 2000
 PHASES = ("scroll", "hover", "click")
 PHASE_SHARES = {"scroll": (0.10, 0.20), "hover": (0.30, 0.25), "click": (0.60, 0.55)}
 BACKSTOP_FACTOR = 2.0             # run-level wall clock, a safety net beyond the phases
+OPEN_STUB_JS = """
+(() => {
+  window.open = function (url) {
+    try { window.__exploreBlockedOpen && window.__exploreBlockedOpen(String(url)); } catch (e) {}
+    return null;
+  };
+})();
+"""
 RAW_URLS_PER_KEY = 5              # raw URLs kept per origin+path key; --all-raw-urls lifts it
 LABEL_MAX_WORDS = 4               # the screener's single-word denylist: names this short only
 
@@ -489,6 +497,7 @@ class Explorer:
         self.periodic_patterns: set[str] = set()
         self.raw_types: dict[str, str] = {}    # raw URL -> resource type, first seen
         self.blocked_writes: list[dict] = []   # non-GET/HEAD requests the guard aborted
+        self.blocked_opens: list[dict] = []    # window.open calls the stub refused
         self.allowed_writes: list[dict] = []   # ... and the ones an allowance let through
         # raw URL -> CDP initiator, CDP resource type, and Sec-Purpose/Purpose header
         self.request_meta: dict[str, dict] = {}
@@ -653,6 +662,25 @@ class Explorer:
         except Exception:  # noqa: BLE001 - never let the guard break the page
             pass
         route.fallback()
+
+    def stub_window_open(self) -> None:
+        """From the first interaction on, window.open opens nothing and is logged.
+
+        Closing popups on sight is too late: by then the popup has loaded. Installed
+        in every current frame, and as an init script for documents created later.
+        """
+        try:
+            self.page.expose_function(
+                "__exploreBlockedOpen",
+                lambda url: self.blocked_opens.append({"url": url, "action": self.current}))
+            self.page.add_init_script(OPEN_STUB_JS)
+        except Exception:  # noqa: BLE001 - instrumentation must never break a page
+            pass
+        for frame in self.page.frames:
+            try:
+                frame.evaluate(OPEN_STUB_JS)
+            except Exception:  # noqa: BLE001 - detached or cross-process frame
+                pass
 
     def _on_popup(self, popup) -> None:
         # screen.load_page already closes every popup; this records who caused it.
@@ -1229,6 +1257,7 @@ class Explorer:
             listener_stats = self.mark_listener_elements()
             self.listener_scans.append(listener_stats)
             self.write_guard_on = True
+            self.stub_window_open()
             passes_cap_hit = False
             for pass_no in range(1, self.opts.max_passes + 2):
                 if pass_no > 1:
@@ -1415,6 +1444,7 @@ class Explorer:
             "raw_types": dict(sorted(self.raw_types.items())),
             "request_meta": dict(sorted(self.request_meta.items())),
             "blocked_writes": self.blocked_writes,
+            "blocked_opens": self.blocked_opens,
             "allowed_writes": self.allowed_writes,
             "baseline_noise": baseline_noise,
             "new_content": new_content,
