@@ -81,8 +81,16 @@ PHASES = ("scroll", "hover", "click")
 PHASE_SHARES = {"scroll": (0.10, 0.20), "hover": (0.30, 0.25), "click": (0.60, 0.55)}
 BACKSTOP_FACTOR = 2.0             # run-level wall clock, a safety net beyond the phases
 RAW_URLS_PER_KEY = 5              # raw URLs kept per origin+path key; --all-raw-urls lifts it
-LABEL_MAX_WORDS = 4               # the denylist applies only to names this short
+LABEL_MAX_WORDS = 4               # the screener's single-word denylist: names this short only
 
+# Phrase rules, applied at any name length: these name the action itself, so a long
+# name (a product title inside "add ... to cart") must not switch them off.
+PHRASE_DENY = re.compile(
+    r"\b(add\b.{0,80}?\bto\s+(cart|bag|basket|wish\s?list|favou?rites?)|buy|check\s?out|"
+    r"wish\s?list|favou?rites?|rate\s+this|rate|ratings?|vote|not\s+helpful|helpful|like|"
+    r"follow|reply|comment|report|save)\b", re.IGNORECASE | re.DOTALL)
+CONSENT_WORDS = re.compile(r"\b(cookies?|consent)\b", re.IGNORECASE)
+CONSENT_ACTIONS = re.compile(r"\b(accept|agree|allow|reject)\b", re.IGNORECASE)
 
 # Request guard: after load, only GET and HEAD leave the page, plus these reads.
 # Algolia's query endpoints are POST by design (DocSearch on the Astro docs, the
@@ -189,6 +197,19 @@ DISCOVER_JS = r"""
     return ((c && c.baseVal !== undefined ? c.baseVal : c) || '').toString()
       .trim().split(/\s+/).filter(Boolean).slice(0, 2);
   };
+  // inside a cookie/consent banner: an ancestor (or the element) whose id, class,
+  // role or aria-label says so
+  const CONSENT_RE = /cookie|consent|gdpr|onetrust|cookiebot|didomi|\bcmp\b|privacy-banner/i;
+  const inConsent = (el) => {
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      const cls = typeof n.className === 'string' ? n.className : '';
+      if (CONSENT_RE.test([n.id, cls, n.getAttribute('role') || '',
+                           n.getAttribute('aria-label') || ''].join(' '))) {
+        return true;
+      }
+    }
+    return false;
+  };
   const cssPath = (el) => {
     const parts = [];
     let e = el;
@@ -248,6 +269,7 @@ DISCOVER_JS = r"""
         name: acc(el),
         nearby: nearby(el),
         in_form: !!el.closest('form'),
+        in_consent: inConsent(el),
         is_submit: (el.getAttribute('type') || '').toLowerCase() === 'submit',
         in_method_post: !!el.closest('[method="post" i]'),
         href: anchor ? (anchor.getAttribute('href') || '') : '',
@@ -1091,17 +1113,29 @@ class Explorer:
             return
 
     def veto(self, cand: dict) -> bool:
-        """Apply the screener's safety rules. True if the click is refused."""
-        safe, reason, kind = click_is_safe(cand, self.settled_url,
-                                           label_max_words=LABEL_MAX_WORDS)
+        """Apply the safety rules. True if the click is refused."""
+        name = (cand.get("name") or "").strip()
+        phrase = PHRASE_DENY.search(name)
+        if phrase:
+            safe, kind = False, "safety-denylist"
+            reason = f"phrase rule matched {phrase.group(0)!r} in this control's own name"
+        elif cand.get("in_consent"):
+            safe, kind = False, "safety-denylist"
+            reason = "inside a cookie/consent banner"
+        elif CONSENT_ACTIONS.search(name) and CONSENT_WORDS.search(name):
+            safe, kind = False, "safety-denylist"
+            reason = "consent control (accept/agree/allow/reject with cookie/consent)"
+        else:
+            safe, reason, kind = click_is_safe(cand, self.settled_url,
+                                               label_max_words=LABEL_MAX_WORDS)
         if safe:
             return False
         record = {"target": cand["selector"], "tag": cand["tag"], "name": own_name_of(cand),
                   "nearby": cand["nearby"][:120], "href": (cand.get("href") or "")[:160],
                   "sources": cand.get("sources", []), "reason": reason, "kind": kind}
         if kind == "safety-denylist":
-            term = SAFETY_DENY.search(own_name_of(cand))
-            record["term"] = term.group(0).lower() if term else "?"
+            term = PHRASE_DENY.search(name) or SAFETY_DENY.search(own_name_of(cand))
+            record["term"] = term.group(0).lower()[:40] if term else reason[:40]
             self.safety_skips.append(record)
         self.vetoes.append(record)
         return True
