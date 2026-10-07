@@ -306,6 +306,11 @@ def analyse(p: dict, blocker: PostHocBlocker) -> tuple[dict, list[dict]]:
     row["blocked_writes"] = sorted(blocks.values(), key=lambda b: (b["group"], b["url"]))
     row["allowed_writes"] = sorted({(w["method"], w["url"].split("?")[0], w["allowance"])
                                     for r in runs for w in r.get("allowed_writes") or []})
+    # denylist skips per rule (explorer runs that record a rule id), counted once per
+    # (element, rule) per page so repeated discovery passes do not inflate it
+    rule_hits = {(v.get("target"), v.get("rule")) for items in (ex.get("safety_vetoes") or {}).values()
+                 for v in items if v.get("rule") and v.get("kind", "").startswith("safety")}
+    row["skips_by_rule"] = dict(Counter(rule for _t, rule in rule_hits))
     row["unsuitable_skips"] = sum(1 for items in (ex.get("safety_vetoes") or {}).values()
                                   for v in items if v.get("kind") == "unsuitable")
     row["safety_vetoes"] = len(vetoes)
