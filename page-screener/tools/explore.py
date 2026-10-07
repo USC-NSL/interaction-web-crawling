@@ -493,6 +493,9 @@ class Explorer:
         self.settled_url = url
         self.target_norm = normalise_request(url)
         self.guard_on = False
+        # The write guard starts with the first interaction phase: the idle window and
+        # baseline run unguarded, measured the way a no-behavior crawl is.
+        self.write_guard_on = False
         self.prefix_seq = 0
 
     # ---- request bookkeeping --------------------------------------------------
@@ -608,7 +611,7 @@ class Explorer:
         Everything else falls back to the screener's handler.
         """
         try:
-            if self.guard_on and request.method not in ("GET", "HEAD"):
+            if self.write_guard_on and request.method not in ("GET", "HEAD"):
                 why = self.write_allowance(request)
                 act = self.actions[self.current - 1] if self.current else {}
                 record = {"method": request.method, "url": request.url,
@@ -1203,6 +1206,7 @@ class Explorer:
             # 2-5. Scroll, hover, click; re-discover until nothing new.
             listener_stats = self.mark_listener_elements()
             self.listener_scans.append(listener_stats)
+            self.write_guard_on = True
             passes_cap_hit = False
             for pass_no in range(1, self.opts.max_passes + 2):
                 if pass_no > 1:
