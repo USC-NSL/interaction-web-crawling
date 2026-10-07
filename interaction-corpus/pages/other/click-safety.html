@@ -112,6 +112,7 @@
     <button type="button" id="show-summary-beacon">Show summary</button>
     <button type="button" id="show-notes-xhr">Show notes</button>
     <button type="button" id="show-extras-form">Show extras</button>
+    <button type="button" id="show-gallery-popup">Show gallery</button>
     <p class="revealed" id="guard-text" hidden>Guard controls were clicked.</p>
   </div>
   <form id="hidden-post-form" method="post" hidden></form>
@@ -193,6 +194,13 @@
     var xhr = new XMLHttpRequest();
     xhr.open('PUT', assetUrl('forbidden-xhr-put'));
     xhr.send('{"note":1}');
+  });
+  // A popup is a new page load the crawler never asked for. Detected from the opener,
+  // because a crawler may close the popup before it loads: window.open returns a
+  // window only if one was created. The popup page also reports itself if it loads.
+  guard('show-gallery-popup', function () {
+    var popup = window.open('/pages/other/click-safety-popup.html', '_blank');
+    if (popup) fetchSentinel('forbidden-popup-created');
   });
   guard('show-extras-form', function () {
     var form = document.getElementById('hidden-post-form');

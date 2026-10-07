@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<title>click-safety-popup</title>
+</head>
+<body>
+<p>Popup opened by click-safety. Reaching this page means a window.open escaped.</p>
+<script>
+  new Image().src = ['', 'sentinel', 'click-safety', 'forbidden-popup-opened.png'].join('/');
+</script>
+</body>
+</html>
