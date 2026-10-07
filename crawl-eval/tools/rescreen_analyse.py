@@ -37,7 +37,8 @@ SYNC_HOST = re.compile(r"(^|[.-])(sync|pixel|beacon)[.-]", re.I)
 SYNC_PATH = re.compile(r"(^|/)(setuid|user_?sync|usersync|psync|sync|pixels?|cs|cookie|"
                        r"pageview[\w-]*|collect|beacon|track(ing)?|telemetry)(/|$|\?|\.)", re.I)
 ANALYTICS_HOSTS = re.compile(r"(^|\.)(braze\.com|segment\.io|mixpanel\.com|amplitude\.com|"
-                             r"hotjar\.com|fullstory\.com|clarity\.ms|spot\.im)$", re.I)
+                             r"hotjar\.com|fullstory\.com|clarity\.ms|spot\.im|adobedtm\.com|omtrdc\.net|"
+                             r"demdex\.net|qualtrics\.com)$", re.I)
 PROTECTION = re.compile(r"awswaf\.com|recaptcha|hcaptcha|turnstile|/Waa/", re.I)
 SEARCH = re.compile(r"search|algolia|docsearch|lunr|pagefind|typesense|meilisearch", re.I)
 CONSENT = re.compile(r"cookieyes|onetrust|cookiebot|consent|didomi|trustarc|usercentrics", re.I)
@@ -109,8 +110,8 @@ def classify(u: str, g: dict, page_url: str, noise: set[str], meta: dict) -> tup
         return "presentational", "P3 stylesheet"
     if SEARCH.search(u) or SEARCH.search(target):
         return "functional", "F1 search (URL or triggering control)"
-    if CONSENT.search(host + parts.path) or CONSENT.search(target):
-        return "functional", "F2 consent manager (host/path or triggering control)"
+    if CONSENT.search(host + parts.path):
+        return "functional", "F2 consent manager (host/path)"
     if PROTECTION.search(u):
         return "functional", "F5 bot/abuse protection"
     if WIDGET_HOSTS.search(host) and rtype != "image":
@@ -215,9 +216,18 @@ def analyse(p: dict, blocker: PostHocBlocker) -> tuple[dict, list[dict]]:
     # A cap that ends a run before clicking means click content was never looked for.
     ended = sorted({r["caps"]["ended_by"] for r in runs if r["caps"]["ended_by"]})
     clicks_done = min((r.get("action_counts") or {}).get("click", 0) for r in runs) if runs else 0
-    coverage = ("complete" if not ended else
-                "no clicks (cap hit before clicking)" if clicks_done == 0 else
-                f"partial ({clicks_done} clicks before cap)")
+    if all("phase_caps" in r["caps"] for r in runs):
+        # per-phase budgets: a hover cap says nothing about click coverage
+        capped = {p for r in runs for p, c in r["caps"]["phase_caps"].items() if c}
+        if any(r["caps"]["ended_by"] == "wall_clock_backstop" for r in runs):
+            capped |= {"backstop"}
+        click_cov = ("complete" if "click" not in capped and "backstop" not in capped else
+                     f"partial ({clicks_done} clicks before cap)")
+        coverage = "complete" if not capped else f"capped: {', '.join(sorted(capped))}"
+    else:
+        click_cov = coverage = ("complete" if not ended else
+                                "no clicks (cap hit before clicking)" if clicks_done == 0 else
+                                f"partial ({clicks_done} clicks before cap)")
     click = by_action["click"]
     kinds = Counter(gated[u]["kind"] for u in click)
     row.update({
@@ -225,6 +235,7 @@ def analyse(p: dict, blocker: PostHocBlocker) -> tuple[dict, list[dict]]:
         "runs_ok": len(runs),
         "ended_by": ended,
         "coverage": coverage,
+        "click_coverage": click_cov,
         "gated_total": len(gated),
         "by_action": {a: len(v) for a, v in by_action.items()},
         "click_pool": len(click),
