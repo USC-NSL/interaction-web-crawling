@@ -1,0 +1,229 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://curve.local/interaction-corpus/manifest.schema.json",
+ "title": "Interaction test corpus manifest",
+ "type": "object",
+ "required": [
+  "version",
+  "pages"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "version": {
+   "type": "integer",
+   "minimum": 1
+  },
+  "pages": {
+   "type": "array",
+   "minItems": 1,
+   "items": {
+    "$ref": "#/$defs/page"
+   }
+  }
+ },
+ "$defs": {
+  "page": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "path",
+    "mechanism",
+    "submechanism",
+    "variant",
+    "resource_sentinels",
+    "text_sentinels",
+    "required_actions",
+    "expect_static_discoverable",
+    "guard_observable",
+    "viewport_min_height_px"
+   ],
+   "properties": {
+    "id": {
+     "type": "string",
+     "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "path": {
+     "type": "string",
+     "pattern": "^pages/[a-z]+/[a-z0-9-]+\\.html$"
+    },
+    "mechanism": {
+     "type": "string",
+     "enum": [
+      "click",
+      "hover",
+      "scroll",
+      "change",
+      "none"
+     ]
+    },
+    "submechanism": {
+     "type": "string",
+     "pattern": "^[a-z0-9]+$"
+    },
+    "variant": {
+     "type": "string",
+     "pattern": "^[a-z0-9]+$"
+    },
+    "resource_sentinels": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {
+      "type": "string",
+      "pattern": "^/sentinel/[a-z0-9]+-[a-z0-9]+/[a-z0-9]+/[0-9]{2}\\.png$"
+     }
+    },
+    "text_sentinels": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {
+      "type": "string",
+      "pattern": "^SENTINEL-TEXT-[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9]+-[0-9]{2}$"
+     }
+    },
+    "required_actions": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/action"
+     }
+    },
+    "expect_static_discoverable": {
+     "type": "boolean"
+    },
+    "guard_observable": {
+     "type": [
+      "boolean",
+      "null"
+     ],
+     "description": "Derived empirically by tools/mutations.py, never by reasoning. null = not yet derived, which is a failure for a built page."
+    },
+    "viewport_min_height_px": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "notes": {
+     "type": "string"
+    }
+   }
+  },
+  "action": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "type"
+   ],
+   "properties": {
+    "type": {
+     "type": "string",
+     "enum": [
+      "click",
+      "hover",
+      "scroll_to",
+      "scroll_by",
+      "select",
+      "none",
+      "wait"
+     ]
+    },
+    "selector": {
+     "type": "string",
+     "minLength": 1
+    },
+    "pixels": {
+     "type": "integer"
+    },
+    "value": {
+     "type": "string"
+    },
+    "repeat": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "frame": {
+     "type": "string",
+     "minLength": 1
+    },
+    "ms": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "wait: milliseconds to wait (e.g. for a page that hydrates after load)"
+    }
+   },
+   "allOf": [
+    {
+     "if": {
+      "properties": {
+       "type": {
+        "enum": [
+         "click",
+         "hover",
+         "scroll_to"
+        ]
+       }
+      },
+      "required": [
+       "type"
+      ]
+     },
+     "then": {
+      "required": [
+       "selector"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "type": {
+        "const": "scroll_by"
+       }
+      },
+      "required": [
+       "type"
+      ]
+     },
+     "then": {
+      "required": [
+       "pixels"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "type": {
+        "const": "select"
+       }
+      },
+      "required": [
+       "type"
+      ]
+     },
+     "then": {
+      "required": [
+       "selector",
+       "value"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "type": {
+        "const": "wait"
+       }
+      },
+      "required": [
+       "type"
+      ]
+     },
+     "then": {
+      "required": [
+       "ms"
+      ]
+     }
+    }
+   ]
+  }
+ }
+}
