@@ -380,6 +380,34 @@
         "/sentinel/click-listener/inert/01.png"
       ],
       "notes": "Same toggle built from a plain div holding only an icon: no role, no accessible name, no tabindex, no onclick attribute; handler attached with addEventListener. No cursor: pointer on the trigger or any ancestor. Only a crawler that sees the registered click listener can find it. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "click-hydration-delayed",
+      "path": "pages/click/hydration-delayed.html",
+      "mechanism": "click",
+      "submechanism": "hydration",
+      "variant": "delayed",
+      "resource_sentinels": [
+        "/sentinel/click-hydration/delayed/01.png",
+        "/sentinel/click-hydration/delayed/02.png",
+        "/sentinel/click-hydration/delayed/03.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "wait",
+          "ms": 4500
+        },
+        {
+          "type": "click",
+          "selector": ".carousel-next",
+          "repeat": 3
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Carousel whose real <button> 'Next slide' is in the DOM at load but whose click handler is attached 4 s after load, as a server-rendered page attaches handlers on hydration. A click before then does nothing. Hydration is simulated with a loading indicator that updates the DOM every 250 ms until the handler attaches (the corpus allows no non-sentinel requests, so the activity is DOM-only); a page that hydrates with no DOM or network activity at all would look quiet to a settle-on-quiet crawler. required_actions waits 4.5 s first. guard_observable derived empirically: A6 FAILS under guard-removal."
     }
   ]
 }

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-hydration-delayed</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f;
+    background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .carousel { position: relative; border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; padding: 18px 18px 64px; }
+  .slide h2 { font-size: 17px; margin: 0 0 6px; }
+  .slide p { margin: 0; color: #55555f; }
+  .slide[hidden] { display: none; }
+  .slide-figure { margin: 14px 0 0; display: flex; align-items: center; gap: 12px; padding: 12px;
+                  border: 1px dashed #c9c9d4; border-radius: 8px; background: #f7f7fb; color: #55555f; font-size: 14px; }
+  .slide-figure img { width: 96px; height: 64px; flex: none; background: #e4e4ee; border-radius: 4px; }
+  .carousel-next {
+    position: absolute; right: 18px; bottom: 16px;
+    font: inherit; padding: 6px 12px; border: 1px solid #c9c9d4; border-radius: 6px;
+    background: #f3f3f8; cursor: pointer;
+  }
+  .status { position: absolute; left: 18px; bottom: 18px; margin: 0; font-size: 14px; color: #6a6a76; }
+  .hydrating { margin: 0 0 16px; font-size: 14px; color: #6a6a76; }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-hydration-delayed</h1>
+  <p class="lede">
+    Click "Next slide" three times. The button is on the page at once, but it only starts
+    working about four seconds after load, once the page has finished hydrating.
+  </p>
+
+  <p class="hydrating" id="hydrating" aria-live="polite">Loading interactive features 0%</p>
+
+  <section class="carousel" aria-roledescription="carousel" aria-label="Product gallery">
+    <div class="slide" role="group" aria-roledescription="slide" aria-label="Slide 1 of 4">
+      <h2>Trail frame, 2025</h2>
+      <p>Hydroformed aluminium, 1.6 kg. Visible when the page loads, so it carries no figure.</p>
+    </div>
+    <div class="slide" role="group" aria-roledescription="slide" aria-label="Slide 2 of 4" data-idx="01" hidden>
+      <h2>Suspension</h2>
+      <p>140 mm travel, air-sprung, with a lockout lever.</p>
+      <figure class="slide-figure"><figcaption>Fork, side view</figcaption></figure>
+    </div>
+    <div class="slide" role="group" aria-roledescription="slide" aria-label="Slide 3 of 4" data-idx="02" hidden>
+      <h2>Brakes</h2>
+      <p>Four-piston hydraulic discs, 203 mm rotors.</p>
+      <figure class="slide-figure"><figcaption>Caliper, close-up</figcaption></figure>
+    </div>
+    <div class="slide" role="group" aria-roledescription="slide" aria-label="Slide 4 of 4" data-idx="03" hidden>
+      <h2>Colours</h2>
+      <p>Four colourways, two of them gloss.</p>
+      <figure class="slide-figure"><figcaption>Colourway swatches</figcaption></figure>
+    </div>
+    <p class="status">Slide 1 of 4</p>
+    <button type="button" class="carousel-next" aria-label="Next slide">Next</button>
+  </section>
+</main>
+
+<script>
+  const MECH = 'click-hydration';
+  const VARIANT = 'delayed';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  // Fetch each sentinel at most once per page load: repeating an action must not
+  // repeat the request. The guard is the first statement of this helper.
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  const slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  const status = document.querySelector('.status');
+  let current = 0;
+
+  // Wraps past the last slide, so re-running the action returns to a revealed
+  // slide and the already-fetched guard stays observable.
+  function show(next) {
+    const index = (next + slides.length) % slides.length;
+    slides[current].hidden = true;
+    slides[index].hidden = false;
+    current = index;
+    status.textContent = 'Slide ' + (index + 1) + ' of ' + slides.length;
+    const idx = slides[index].dataset.idx;
+    if (idx) {
+      const img = fetchSentinel(idx);
+      if (img) {
+        img.alt = '';
+        slides[index].querySelector('.slide-figure').prepend(img);
+      }
+    }
+  }
+
+  // Simulated hydration: the button exists from the start, but its handler is
+  // attached only after HYDRATE_MS. Until then a loading indicator updates the DOM,
+  // standing in for the activity of a real hydration (chunks arriving, re-renders).
+  const HYDRATE_MS = 4000;
+  const indicator = document.getElementById('hydrating');
+  const started = Date.now();
+  const ticker = setInterval(function () {
+    const pct = Math.min(99, Math.floor((Date.now() - started) / HYDRATE_MS * 100));
+    indicator.textContent = 'Loading interactive features ' + pct + '%';
+  }, 250);
+  window.addEventListener('load', function () {
+    setTimeout(function () {
+      clearInterval(ticker);
+      indicator.remove();
+      document.querySelector('.carousel-next').addEventListener('click', function () {
+        show(current + 1);
+      });
+    }, HYDRATE_MS);
+  });
+</script>
+</body>
+</html>
