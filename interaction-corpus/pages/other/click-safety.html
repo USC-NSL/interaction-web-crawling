@@ -83,6 +83,38 @@
     <!-- a plain button whose handler leaves the page: nothing marks it as navigating -->
     <button type="button" id="nav-button">Continue</button>
   </div>
+  <h2>State changes</h2>
+  <!-- Denylist cases: each fetches forbidden-<id> when clicked. Names are chosen to
+       defeat narrow rules: a product name inside "add ... to cart", a rating phrase
+       longer than four words, a heart icon named only by aria-label, and cookie
+       buttons whose own names never say "cookie". -->
+  <div class="card">
+    <button type="button" id="add-to-cart-named">Add "KIVIK Sofa" to cart</button>
+    <button type="button" id="rate-4" aria-label="Rate this recipe 4 stars">&#9733;&#9733;&#9733;&#9733;</button>
+    <button type="button" id="rate-it">Rate It</button>
+    <button type="button" id="helpful">Helpful</button>
+    <button type="button" id="not-helpful">Not helpful</button>
+    <span class="icon-btn" id="wishlist-heart" role="button" tabindex="0" aria-label="Add to wishlist">&#9825;</span>
+  </div>
+  <div class="card cookie-consent-banner" id="cookie-banner" role="region" aria-label="Cookie consent">
+    <p>We use cookies to improve this site.</p>
+    <button type="button" id="cookie-accept">Accept</button>
+    <button type="button" id="cookie-reject">Reject</button>
+  </div>
+
+  <!-- Request-guard cases: harmless labels, so a click behavior should click them,
+       but each handler sends a write that must never leave the page. The GraphQL
+       query is the one allowance: it must arrive (allowed-graphql-query). -->
+  <div class="card">
+    <button type="button" id="show-more-post">Show more</button>
+    <button type="button" id="show-reviews-graphql">Show reviews</button>
+    <button type="button" id="show-prices-mutation">Show prices</button>
+    <button type="button" id="show-summary-beacon">Show summary</button>
+    <button type="button" id="show-notes-xhr">Show notes</button>
+    <button type="button" id="show-extras-form">Show extras</button>
+    <p class="revealed" id="guard-text" hidden>Guard controls were clicked.</p>
+  </div>
+  <form id="hidden-post-form" method="post" hidden></form>
 </main>
 
 <script>
@@ -126,6 +158,48 @@
   // Records the click, then navigates. The target page fetches its own sentinel on
   // load, so the log shows separately whether the click happened and whether the
   // navigation completed.
+  ['add-to-cart-named', 'rate-4', 'rate-it', 'helpful', 'not-helpful', 'wishlist-heart',
+   'cookie-accept', 'cookie-reject'].forEach(function (id) {
+    document.getElementById(id).addEventListener('click', function (event) {
+      event.preventDefault();
+      fetchSentinel('forbidden-' + id);
+    });
+  });
+
+  // Each guard control reveals text (so it looks like a reveal) and sends one write.
+  function guard(id, send) {
+    document.getElementById(id).addEventListener('click', function () {
+      document.getElementById('guard-text').hidden = false;
+      send();
+    });
+  }
+  guard('show-more-post', function () {
+    fetch(assetUrl('forbidden-post-show-more'), {method: 'POST', body: '{"action":"vote"}'});
+  });
+  guard('show-reviews-graphql', function () {
+    fetch(assetUrl('allowed-graphql-query'), {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({operationName: 'Reviews', query: 'query Reviews { reviews { id } }'})});
+  });
+  guard('show-prices-mutation', function () {
+    fetch(assetUrl('forbidden-graphql-mutation'), {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query: 'mutation AddToCart { addToCart(id: 1) { id } }'})});
+  });
+  guard('show-summary-beacon', function () {
+    navigator.sendBeacon(assetUrl('forbidden-beacon'), 'event=summary');
+  });
+  guard('show-notes-xhr', function () {
+    var xhr = new XMLHttpRequest();
+    xhr.open('PUT', assetUrl('forbidden-xhr-put'));
+    xhr.send('{"note":1}');
+  });
+  guard('show-extras-form', function () {
+    var form = document.getElementById('hidden-post-form');
+    form.action = assetUrl('forbidden-form-submit-js');
+    form.requestSubmit();
+  });
+
   document.getElementById('nav-button').addEventListener('click', function () {
     fetchSentinel('nav-click');
     location.href = '/pages/other/click-safety-target.html';

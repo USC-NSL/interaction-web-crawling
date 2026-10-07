@@ -33,8 +33,10 @@ class RequestLog:
         if reset:
             self.path.write_text("")
 
-    def append(self, path: str, referer: str) -> None:
+    def append(self, path: str, referer: str, method: str = "GET") -> None:
         record = {"ts": time.time(), "path": path, "referer": referer}
+        if method not in ("GET", "HEAD"):
+            record["method"] = method          # GET records keep their original shape
         line = json.dumps(record, separators=(",", ":")) + "\n"
         with self._lock:
             with self.path.open("a") as fh:
@@ -87,6 +89,21 @@ class CorpusHandler(SimpleHTTPRequestHandler):
                 self._empty_404()
                 return
         super().do_HEAD()
+
+    # Writes (POST from fetch/XHR/forms, sendBeacon, PUT/PATCH/DELETE) are logged too:
+    # the click-safety page uses them to detect a state-changing request that escaped
+    # a crawler's request guard. Every write is answered 204 and changes nothing.
+    def _write(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        if length:
+            self.rfile.read(length)
+        if self._is_sentinel():
+            self.request_log.append(urlsplit(self.path).path, self.headers.get("Referer", ""),
+                                    self.command)
+        self.send_response(204)
+        self.end_headers()
+
+    do_POST = do_PUT = do_PATCH = do_DELETE = _write
 
     def _sentinel_exists(self) -> bool:
         return Path(self.translate_path(self.path)).is_file()
