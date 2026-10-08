@@ -1185,6 +1185,14 @@ class Explorer:
         else:
             safe, reason, kind = click_is_safe(cand, self.settled_url,
                                                label_max_words=LABEL_MAX_WORDS)
+            # A link to another document with its own click listener is often a
+            # lightbox or a JS-handled control, not a plain navigation. Click it: the
+            # navigation guard answers any main-frame navigation with 204. The scheme
+            # and path rules ran before this check, so they still apply.
+            if (kind == "unsuitable" and reason == "link navigates away from the page under test"
+                    and "cdp-listener-click" in (cand.get("via") or [])
+                    and (cand.get("target") or "").lower() != "_blank"):
+                safe, reason, kind = True, "", "ok"
             if not safe:
                 word = SAFETY_DENY.search(name) if kind == "safety-denylist" else None
                 rule = deny_rule("word", word.group(0)) if word else kind
