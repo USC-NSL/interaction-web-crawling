@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<title>click-framehash-iframes frame 2</title>
+<style>
+  body { margin: 0; padding: 12px 16px; font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI",
+         Helvetica, Arial, sans-serif; }
+  .answer[hidden] { display: none; }
+</style>
+</head>
+<body>
+<p>Example 2: what does the frame's back button undo?</p>
+<a class="reveal" href="#answer-2" data-idx="02">Show the answer</a>
+<p class="answer" id="answer-2" hidden>Whatever entry is newest in the shared session history.</p>
+<script>
+  // No preventDefault: the hash change, and its history entry, is the point.
+  document.querySelector('.reveal').addEventListener('click', function (event) {
+    document.getElementById('answer-2').hidden = false;
+    parent.reveal(event.currentTarget.dataset.idx);
+  });
+</script>
+</body>
+</html>
