@@ -1,12 +1,17 @@
 {
-  "rule": "re-run of the pages excluded from the first evaluation (instrument check), plus gov.uk and BBC; each page explored and crawled back-to-back",
+  "rule": "unified evaluation: every evaluation page explored and crawled back-to-back with the same explorer and bundles",
   "not_included": {
     "https://www.ssa.gov/faqs/en/": "HTTP 403 to every Browsertrix crawl",
     "https://owlcarousel2.github.io/OwlCarousel2/demos/lazyLoad.html": "its pool host placehold.it is dead (403)",
-    "https://splidejs.com": "page renders empty in the crawler's browser"
+    "https://splidejs.com": "page renders empty in the crawler's browser",
+    "https://carbondesignsystem.com/components/accordion/usage/": "click pool speculative only",
+    "https://developer.android.com/develop/ui/compose/documentation": "click pool presentational only",
+    "https://sallysbakingaddiction.com/chocolate-chip-cookies/": "no click pool",
+    "https://docs.flutter.dev/get-started/install": "click phase capped with nothing found"
   },
   "notes": {
-    "https://kenwheeler.github.io/slick": "https, not http: the first run's crawls stayed on http while the explorer settled on https"
+    "https://kenwheeler.github.io/slick": "https: the first run's crawls stayed on http while the explorer settled on https",
+    "https://www.bbc.co.uk/news/in_pictures": "an ordinary page, not a negative: the back-to-back exploration decides"
   },
   "pages": [
     {
@@ -17,6 +22,21 @@
     {
       "id": "kenwheeler-github-io-slick",
       "url": "https://kenwheeler.github.io/slick",
+      "set": "demo"
+    },
+    {
+      "id": "biati-digital-github-io-glightbox",
+      "url": "https://biati-digital.github.io/glightbox/",
+      "set": "demo"
+    },
+    {
+      "id": "flickity-metafizzy-co",
+      "url": "https://flickity.metafizzy.co/",
+      "set": "demo"
+    },
+    {
+      "id": "keen-slider-io-examples",
+      "url": "https://keen-slider.io/examples",
       "set": "demo"
     },
     {
@@ -45,13 +65,43 @@
       "set": "production"
     },
     {
+      "id": "developer-mozilla-org-en-us-docs-web-css-display",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/CSS/display",
+      "set": "production"
+    },
+    {
+      "id": "admission-usc-edu-apply-faq",
+      "url": "https://admission.usc.edu/apply/faq/",
+      "set": "production"
+    },
+    {
+      "id": "docs-astro-build-en-install-and-setup",
+      "url": "https://docs.astro.build/en/install-and-setup/",
+      "set": "production"
+    },
+    {
+      "id": "www-bbc-co-uk-news-in-pictures",
+      "url": "https://www.bbc.co.uk/news/in_pictures",
+      "set": "production"
+    },
+    {
       "id": "design-system-service-gov-uk-components-accordion",
       "url": "https://design-system.service.gov.uk/components/accordion/",
       "set": "negative"
     },
     {
-      "id": "www-bbc-co-uk-news-in-pictures",
-      "url": "https://www.bbc.co.uk/news/in_pictures",
+      "id": "www-ca-gov-departments",
+      "url": "https://www.ca.gov/departments/",
+      "set": "negative"
+    },
+    {
+      "id": "getbootstrap-com-docs-5-3-components-accordion",
+      "url": "https://getbootstrap.com/docs/5.3/components/accordion/",
+      "set": "negative"
+    },
+    {
+      "id": "www-nhs-uk-conditions",
+      "url": "https://www.nhs.uk/conditions/",
       "set": "negative"
     }
   ]
