@@ -247,7 +247,7 @@ def revealclick_metrics(log: list[dict]) -> dict:
             end = ts(rec)
         elif msg.startswith("Behaviors timed out"):
             timed_out = True
-        m = re.match(r"^Clicking on element \(([^)]*)\): (.*)", msg)
+        m = re.match(r"^Clicking on element \(([^)]*)\)(?: \[scan \d+ms\])?: (.*)", msg)
         if m:
             srcs = [s for s in m.group(1).split(", ") if s]
             for s in srcs:

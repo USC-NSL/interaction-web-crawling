@@ -132,7 +132,7 @@ def revealclick_log(log: list[dict]) -> dict:
         m = re.match(r"^Waited (\d+)ms for the page to settle", msg)
         if m:
             settle = int(m.group(1))
-        m = re.match(r"^Clicking on element \(([^)]*)\): (.*)", msg)
+        m = re.match(r"^Clicking on element \(([^)]*)\)(?: \[scan \d+ms\])?: (.*)", msg)
         if m:
             srcs = [s for s in m.group(1).split(", ") if s]
             sources.update(srcs)
