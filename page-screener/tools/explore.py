@@ -118,6 +118,11 @@ CONSENT_ACTIONS = re.compile(r"\b(accept|agree|allow|reject)\b", re.IGNORECASE)
 WRITE_ALLOWANCES = [
     (re.compile(r"(^|\.)algolia(net)?\.(net|com|io)$", re.I),
      re.compile(r"^/1/indexes/[^/]+/(query|queries)$"), "Algolia search query"),
+    # Google's gRPC-web APIs read via POST; the method name states the operation.
+    # Only Get/List/Search/BatchGet: Init, Set, Update, Create, Delete stay blocked.
+    (re.compile(r"(^|\.)googleapis\.com$", re.I),
+     re.compile(r"^/\$rpc/[^/]+/(Get|List|Search|BatchGet)[A-Za-z0-9_]*$"),
+     "Google gRPC-web read (Get/List/Search/BatchGet)"),
 ]
 
 # --- --match-crawler: mirror Browsertrix 1.14.3's browser (src/util/browser.ts) ---
