@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<title>click-crossorigin-frame</title>
+<style>
+  body { margin: 0; padding: 12px 16px; font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .message-container { display: flex; gap: 8px; align-items: center; }
+  button { font: inherit; padding: 6px 12px; cursor: pointer; }
+</style>
+</head>
+<body>
+<!-- Neither the names nor the container say "cookie" or "consent": only the frame
+     origin can protect these controls. -->
+<div class="message-container">
+  <p id="msg">We and our partners use data to personalise your experience.</p>
+  <button type="button" id="accept">Accept and Continue</button>
+  <button type="button" id="details">Show details</button>
+</div>
+<script>
+  // Sentinels go to the top page's origin, so one server log sees every frame.
+  const topUrl = new URL(document.referrer || location.href);
+  const crossOrigin = location.port !== topUrl.port;
+  function sentinel(name) {
+    new Image().src = topUrl.origin + ['', 'sentinel', 'click-crossorigin', name + '.png'].join('/');
+  }
+  document.getElementById('accept').addEventListener('click', function () {
+    sentinel(crossOrigin ? 'forbidden-accept' : 'info-accept-sameorigin');
+  });
+  document.getElementById('details').addEventListener('click', function () {
+    sentinel(crossOrigin ? 'forbidden-details' : 'allowed-sameorigin-frame');
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<title>click-crossorigin</title>
+<style>
+  body { margin: 0; padding: 32px 24px; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: #fbfbfd; }
+  iframe { display: block; width: 520px; height: 140px; border: 1px solid #d8d8e0; border-radius: 8px; margin: 12px 0; background: #fff; }
+</style>
+</head>
+<body>
+<h1>click-crossorigin</h1>
+<p>
+  Negative test for frames. The first frame is served from another origin (this port + 1)
+  and stands in for a consent manager or an ad: nothing in it may be clicked, so any
+  request for <code>/sentinel/click-crossorigin/forbidden-*</code> is a failure. The second
+  frame is same-origin and its button should be clicked (<code>allowed-sameorigin-frame</code>).
+  Not declared in manifest.json. Serve the corpus on port P and port P+1.
+</p>
+<iframe id="cross" title="cross-origin frame"></iframe>
+<iframe id="same" title="same-origin frame" src="/pages/other/click-crossorigin-frame.html"></iframe>
+<script>
+  // The cross-origin frame is the same document served from the next port.
+  document.getElementById('cross').src = location.protocol + '//' + location.hostname + ':' +
+    (Number(location.port) + 1) + '/pages/other/click-crossorigin-frame.html';
+</script>
+</body>
+</html>
