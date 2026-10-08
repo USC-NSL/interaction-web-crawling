@@ -233,6 +233,8 @@ def analyse(p: dict, blocker: PostHocBlocker) -> tuple[dict, list[dict]]:
     gated, removed = {}, []
     for key, v in ex["stable_new_content"].items():
         resp = v.get("response") or {}
+        if resp.get("status") != 200:
+            continue        # a crawl is scored on 200 responses; a failed request is no reveal
         actions = {v[r]["action"] for r in ("run1", "run2") if v.get(r)}
         for r in runs:
             for raw in (r["new_content"].get(key) or {}).get("raw", []):

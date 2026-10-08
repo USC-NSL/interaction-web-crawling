@@ -40,7 +40,30 @@ CLASSES = ("content", "functional", "presentational")
 CONFIGS = ("A", "B", "C", "F")
 MODES = ("iso", "comb")
 # Pages whose instrument-check differences were inspected and judged non-content.
-NONCONTENT_OK: dict[str, str] = {}
+# Judged from the listed differences (runs/eval/report.json, "instrument").
+NONCONTENT_OK: dict[str, str] = {
+    "biati-digital-github-io-glightbox": "explorer-only Google Fonts CSS request",
+    "flickity-metafizzy-co": "Twitter widget syndication URL differs by query only",
+    "keen-slider-io-examples": "web app manifest and its android-chrome icon (browser-only fetches)",
+    "splidejs-com": "web app manifest and icon; decorative CSS mask image (images/masks/cloud01.jpg)",
+    "admission-usc-edu-apply-faq": "web app manifest; WordPress emoji polyfill, loaded by feature detection",
+    "developer-mozilla-org-en-us-docs-web-css-display":
+        "example runner on a random mdnplay.dev subdomain per load, rotating ad images, "
+        "telemetry, manifest; the click pool (search index, static icons) is unaffected",
+    "design-system-service-gov-uk-components-accordion": "web app manifest",
+    "getbootstrap-com-docs-5-3-components-accordion": "web app manifest and its icon",
+}
+# Excluded from scoring, with the reason (differences are content, or the pool drifted).
+EXCLUDED: dict[str, str] = {
+    "afarkas-github-io-lazysizes-index-html": "2 content images only in the explorer baseline",
+    "kenwheeler-github-io-slick": "crawls loaded http://, the explorer https://: pool URLs cannot match",
+    "www-gymshark-com-collections-all-products-mens": "product images rotated; site redeployed",
+    "www-seriouseats-com-classic-panzanella-salad-recipe": "video segments differ; ads",
+    "food52-com-recipes": "content data query (Sanity) only in the explorer baseline; redeploy",
+    "www-ikea-com-us-en-cat-sofas-fu003": "redeploy (bundle names), location-based store lookup, product images",
+    "vite-dev-guide": "site redeployed: every hashed asset name changed, including the pool's",
+    "www-ssa-gov-faqs-en": "HTTP 403 to every Browsertrix crawl",
+}
 
 
 # ---- instrument check ----------------------------------------------------------------
@@ -201,8 +224,10 @@ def main() -> int:
         ex_f = filtered(ex_base, p["url"], blocker, periodic)
         entry["instrument"] = {"iou": iou(bt_f, ex_f), "only_browsertrix": sorted(bt_f - ex_f),
                                "only_explorer": sorted(ex_f - bt_f)}
-        ok = entry["instrument"]["iou"] in (1.0, None) or p["id"] in NONCONTENT_OK
+        ok = (entry["instrument"]["iou"] == 1.0 or p["id"] in NONCONTENT_OK) and p["id"] not in EXCLUDED
         entry["scored"] = ok
+        entry["instrument"]["judgment"] = (EXCLUDED.get(p["id"]) or NONCONTENT_OK.get(p["id"])
+                                           or ("identical" if entry["instrument"]["iou"] == 1.0 else ""))
         baseline = bt_f | ex_f
 
         pool = {c: {u for u, g in row["gated"].items() if "click" in g["actions"] and g["class"] == c}
