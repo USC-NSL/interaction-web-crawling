@@ -436,6 +436,37 @@
       "guard_observable": true,
       "viewport_min_height_px": 720,
       "notes": "Two same-origin iframes, each with an in-page anchor link (href=\"#answer-N\") that reveals an answer and asks the page to fetch a sentinel. The hash change adds an entry to the session history the frames share with the page: a crawler that undoes it with history.back() can undo another frame's entry and wait for a popstate that never comes. The sentinel logic lives in the page (window.reveal), so mutations apply to it. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "click-lightbox-links",
+      "path": "pages/click/lightbox-links.html",
+      "mechanism": "click",
+      "submechanism": "lightbox",
+      "variant": "links",
+      "resource_sentinels": [
+        "/sentinel/click-lightbox/links/01.png",
+        "/sentinel/click-lightbox/links/02.png",
+        "/sentinel/click-lightbox/links/03.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".lb-link[data-idx='01']"
+        },
+        {
+          "type": "click",
+          "selector": ".lb-link[data-idx='02']"
+        },
+        {
+          "type": "click",
+          "selector": ".lb-link[data-idx='03']"
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Gallery of links to full-size images (<a href=\"...large-0N.jpg\">, another document) whose click handler cancels the navigation and loads the image into a viewer. A crawler that never clicks links to other documents misses all three; one that clicks links with a click listener, behind a navigation guard, recovers them. guard_observable derived empirically: A6 FAILS under guard-removal."
     }
   ]
 }

@@ -15,11 +15,14 @@
   .gallery { display: flex; gap: 12px; }
   .gallery a { display: flex; align-items: flex-end; width: 160px; height: 110px; padding: 8px;
                border-radius: 8px; background: #dfe3f0; color: #1b1b1f; text-decoration: none; }
-  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-             background: rgba(10, 10, 20, 0.8); }
+  /* A viewer panel below the gallery rather than a full-screen overlay, so an opened
+     image never covers the other links (a real pointer click would land on it). */
+  .overlay { margin-top: 16px; display: flex; justify-content: center; padding: 16px;
+             border-radius: 10px; background: #1b1b2a; }
   .overlay[hidden] { display: none; }
   .overlay figure { margin: 0; padding: 16px; background: #fff; border-radius: 8px; }
   .overlay img { display: block; width: 320px; height: 220px; background: #e4e4ee; }
+  #overlay-img:empty { width: 320px; height: 220px; background: #e4e4ee; }
   .overlay button { margin-top: 10px; font: inherit; }
 </style>
 </head>
@@ -27,24 +30,22 @@
 <main>
   <h1>click-lightbox-links</h1>
   <p class="lede">
-    Click a picture to open it in a lightbox. Each picture is a link to its full-size image
-    (another document), but a click handler cancels the navigation and opens an overlay
-    that loads the image. Not declared in manifest.json: the explorer does not click links
-    to other documents, so it cannot be held to this page.
+    Click each picture to open it in the viewer. Each picture is a link to its full-size
+    image (another document), but a click handler cancels the navigation and loads the image
+    into the viewer below.
   </p>
   <div class="gallery">
     <a href="/pages/other/lightbox/large-01.jpg" class="lb-link" data-idx="01">Harbour at dusk</a>
     <a href="/pages/other/lightbox/large-02.jpg" class="lb-link" data-idx="02">Ridge line</a>
     <a href="/pages/other/lightbox/large-03.jpg" class="lb-link" data-idx="03">Market street</a>
   </div>
+  <div class="overlay" id="overlay" hidden>
+    <figure>
+      <div id="overlay-img"></div>
+      <figcaption><button type="button" id="overlay-close">Close</button></figcaption>
+    </figure>
+  </div>
 </main>
-
-<div class="overlay" id="overlay" hidden>
-  <figure>
-    <img id="overlay-img" alt="">
-    <figcaption><button type="button" id="overlay-close">Close</button></figcaption>
-  </figure>
-</div>
 
 <script>
   const MECH = 'click-lightbox';
@@ -56,10 +57,12 @@
 
   // Fetch each sentinel at most once per page load: the guard is the first statement.
   const fetched = new Set();
-  function fetchSentinel(idx, img) {
-    if (fetched.has(idx)) return;
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
     fetched.add(idx);
+    const img = new Image();
     img.src = assetUrl(idx);
+    return img;
   }
 
   const overlay = document.getElementById('overlay');
@@ -68,7 +71,8 @@
     link.addEventListener('click', function (event) {
       event.preventDefault();          // a lightbox, not a navigation to image.jpg
       overlay.hidden = false;
-      fetchSentinel(link.dataset.idx, overlayImg);
+      const img = fetchSentinel(link.dataset.idx);
+      if (img) overlayImg.replaceChildren(img);   // the image fetchSentinel created
     });
   });
   document.getElementById('overlay-close').addEventListener('click', function () {
