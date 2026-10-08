@@ -37,7 +37,7 @@ from rescreen_analyse import analyse as explorer_analyse, explorer_result  # noq
 from screen import normalise_request as path_key  # noqa: E402
 
 CLASSES = ("content", "functional", "presentational")
-CONFIGS = ("A", "B", "C", "F")
+CONFIGS = ("A", "B", "C", "F", "F2")
 MODES = ("iso", "comb")
 # Pages whose instrument-check differences were inspected and judged non-content.
 # Judged from the listed differences (runs/eval/report.json, "instrument").
@@ -205,15 +205,23 @@ def gap_reason(attr: dict, f_logs: list[dict]) -> str:
 # ---- main ----------------------------------------------------------------------------
 
 def main() -> int:
-    pages = json.loads((PKG_ROOT / "tools" / "eval_pages.json").read_text())["pages"]
+    import argparse
+    global EVAL
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--run-dir", type=Path, default=EVAL)
+    ap.add_argument("--pages-file", type=Path, default=PKG_ROOT / "tools" / "eval_pages.json")
+    args = ap.parse_args()
+    EVAL = args.run_dir.resolve()
+    pages = json.loads(args.pages_file.read_text())["pages"]
     blocker = PostHocBlocker()
     report: dict = {"pages": {}}
     for p in pages:
         pd = EVAL / p["id"]
-        ex_dir = RUNS / "rescreen" / p["id"]
+        # explored back-to-back with its crawls when the run did so, else the re-screen
+        ex_dir = pd / "explorer" if (pd / "explorer" / "done.json").exists() else RUNS / "rescreen" / p["id"]
         ex = explorer_result(ex_dir)
         row, _v = explorer_analyse({**p, "tag": p["set"], "dir": ex_dir}, blocker)
-        entry: dict = {"url": p["url"], "set": p["set"]}
+        entry: dict = {"url": p["url"], "set": p["set"], "explorer_dir": str(ex_dir)}
         report["pages"][p["id"]] = entry
         if ex is None or not (pd / "none" / "done.json").exists():
             entry["status"] = "missing explorer result or no-behavior crawl"
@@ -248,7 +256,7 @@ def main() -> int:
                     log = crawl_log(jd)
                     t, to = behavior_time(log)
                     rec = {"new": new, "time": t, "timed_out": to}
-                    if cfg in ("C", "F"):
+                    if cfg in ("C", "F", "F2"):
                         rec["rc"] = revealclick_log(log)
                         rec["clicks"] = rec["rc"]["clicks_total"]
                     else:
@@ -267,7 +275,7 @@ def main() -> int:
                     "clicks": [r["clicks"] for r in reps],
                     "new_total": [len(r["new"]) for r in reps],
                     "new_outside_pool": sorted(union - set().union(*pool.values()))[:50],
-                    "revealclick": [r["rc"] for r in reps] if cfg in ("C", "F") else None,
+                    "revealclick": [r["rc"] for r in reps] if cfg in ("C", "F", "F2") else None,
                 }
         entry["configs"] = configs
         missed = sorted(set().union(*pool.values()) - f_iso_new)
