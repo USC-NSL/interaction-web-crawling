@@ -129,27 +129,39 @@ def classify(u: str, g: dict, page_url: str, noise: set[str], meta: dict) -> tup
     return "content", f"C9 fallback (type {rtype or '?'}, {ctype or 'no content-type'})"
 
 
-STATE_CHANGE = re.compile(r"cart|basket|\bbag\b|wish\s?list|favou?rite|rating|\brate\b|vote|review|"
-                          r"helpful|feedback|comment|reply|subscri|sign\s?up|newsletter|consent|"
-                          r"preference|login|signin|account|profile|order|checkout|mutation", re.I)
-TELEMETRY = re.compile(r"analytics|collect|beacon|track|telemetry|metrics|log(ging)?\b|events?\b|"
-                       r"pixel|rum\b|stats|insights|sentry|datadog|newrelic|/g/collect|/v\d+/[a-z]+/batch",
+# Judged on the URL path (a body mentions consent or reviews too often to mean
+# anything), except for GraphQL mutations, which only the body shows.
+STATE_CHANGE = re.compile(r"cart|basket|wish\s?list|favou?rite|vote|subscri|sign\s?up|newsletter|"
+                          r"consent|login|signin|checkout|/orders?\b|comment|reply|helpful|feedback",
+                          re.I)
+# Reads that happen to use POST: gRPC-web methods named as reads, and query bodies.
+READ_RPC = re.compile(r"/\$?rpc/.*/(Get|List|Search|Find|Lookup|Query|Init|BatchGet)\w*$", re.I)
+READ_BODY = re.compile(r'"(filter|sort|page|pageSize|query|search|q)"\s*:', re.I)
+TELEMETRY = re.compile(r"analytics|collect|beacon|track|telemetry|metrics|/log/|/logs?\b|/events?\b|"
+                       r"pixel|rum\b|stats|insights|sentry|datadog|newrelic|nr-data|measurement|"
+                       r"conversion|openrtb|prebid|/bid\b|bidder|auction|/hb\b|header/auction|"
+                       r"cookie_sync|usersync|user_sync|challenge-platform|/Waa/|/v\d+/[a-z]+/batch",
                        re.I)
-READ_LIKE = re.compile(r"search|query|queries|graphql|/list|/get|/fetch|/find|/lookup|"
-                       r"/recommend|/products|/items\?|/content", re.I)
 
 
 def classify_block(b: dict) -> tuple[str, str]:
     """Group a blocked write: would it have changed state, or was it a lost reveal?"""
-    text = b["url"] + " " + (b.get("body") or "")
+    parts = urllib.parse.urlsplit(b["url"])
+    body = b.get("body") or ""
     if b.get("resource_type") == "document":
         return "state change", "form submission"
-    if STATE_CHANGE.search(text):
-        return "state change", "URL/body names a state change"
-    if b.get("resource_type") == "ping" or TELEMETRY.search(b["url"]):
-        return "telemetry", "beacon or analytics endpoint"
-    if READ_LIKE.search(text):
-        return "possible lost reveal", "read-like endpoint or body (search/query/list)"
+    if re.search(r"\bmutation\b", body):
+        return "state change", "GraphQL mutation"
+    if STATE_CHANGE.search(parts.path):
+        return "state change", "URL path names a state change"
+    if READ_RPC.search(parts.path):
+        return "possible lost reveal", "RPC method named as a read (Get/List/Search/...)"
+    if TELEMETRY.search(parts.netloc + parts.path) or b.get("resource_type") == "ping":
+        return "telemetry", "analytics, ad auction, error report or beacon"
+    if re.search(r'"path"\s*:.*"referrer"\s*:', body):
+        return "telemetry", "pageview body (path + referrer)"
+    if READ_BODY.search(body):
+        return "possible lost reveal", "query body (filter/sort/page/search)"
     return "undetermined", "no rule matched"
 
 
@@ -304,6 +316,8 @@ def analyse(p: dict, blocker: PostHocBlocker) -> tuple[dict, list[dict]]:
         rec["group"], rec["group_rule"] = classify_block(rec)
         rec["runs"] = sorted(rec["runs"])
     row["blocked_writes"] = sorted(blocks.values(), key=lambda b: (b["group"], b["url"]))
+    row["blocked_opens"] = sorted({o["url"] for r in runs for o in r.get("blocked_opens") or []})
+    row["phase_caps"] = [r["caps"].get("phase_caps") for r in runs]
     row["allowed_writes"] = sorted({(w["method"], w["url"].split("?")[0], w["allowance"])
                                     for r in runs for w in r.get("allowed_writes") or []})
     # denylist skips per rule (explorer runs that record a rule id), counted once per
