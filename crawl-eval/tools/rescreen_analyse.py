@@ -165,6 +165,16 @@ def classify_block(b: dict) -> tuple[str, str]:
     return "undetermined", "no rule matched"
 
 
+def lost_content(b: dict) -> str:
+    """What a blocked read would have loaded, from its method name or body keys."""
+    path = urllib.parse.urlsplit(b["url"]).path
+    rpc = re.search(r"/\$?rpc/([^/]+)/(\w+)$", path)
+    if rpc:
+        return f"RPC {rpc.group(1).rsplit('.', 1)[-1]}.{rpc.group(2)}"
+    keys = re.findall(r'"(\w+)"\s*:', b.get("body") or "")
+    return f"{path[-60:]} (body keys: {', '.join(dict.fromkeys(keys[:6]))})" if keys else path[-60:]
+
+
 def explorer_result(page_dir: Path) -> dict | None:
     for f in sorted(page_dir.glob("*.json")):
         d = json.loads(f.read_text())
@@ -340,6 +350,21 @@ def main() -> int:
         vetoes += v
     (OUT / "distribution.json").write_text(json.dumps(rows, indent=2, default=list))
     (OUT / "vetoes.json").write_text(json.dumps(vetoes, indent=2))
+
+    # Guard cost, recorded as a result: what the request guard blocked that looked
+    # like a read, per page.
+    cost = ["# Request-guard cost: blocked requests that look like lost reveals", "",
+            "Per page, every blocked request grouped 'possible lost reveal', with what it "
+            "would have loaded (from its RPC method name or body keys).", "",
+            "| page | method | host | would have loaded | requests | after | rule |",
+            "|---|---|---|---|---|---|---|"]
+    for r in rows:
+        for b in r.get("blocked_writes") or []:
+            if b["group"] == "possible lost reveal":
+                cost.append(f"| {r['url']} | {b['method']} | {urllib.parse.urlsplit(b['url']).netloc} | "
+                            f"{lost_content(b)} | {b['count']} | {b.get('action')} | "
+                            f"{b['group_rule']} |")
+    (OUT / "guard_cost.md").write_text("\n".join(cost) + "\n")
 
     lines = ["# Explorer safety vetoes (re-screen, --acknowledge-skips)", "",
              "One row per (element, reason), with the runs it occurred in.", "",
