@@ -1,0 +1,90 @@
+{
+  "about": "eval2 pages with results to rerun (tools/eval3_plan.py)",
+  "pages": [
+    {
+      "id": "kenwheeler-github-io-slick",
+      "url": "https://kenwheeler.github.io/slick",
+      "set": "demo"
+    },
+    {
+      "id": "biati-digital-github-io-glightbox",
+      "url": "https://biati-digital.github.io/glightbox/",
+      "set": "demo"
+    },
+    {
+      "id": "flickity-metafizzy-co",
+      "url": "https://flickity.metafizzy.co/",
+      "set": "demo"
+    },
+    {
+      "id": "keen-slider-io-examples",
+      "url": "https://keen-slider.io/examples",
+      "set": "demo"
+    },
+    {
+      "id": "www-gymshark-com-collections-all-products-mens",
+      "url": "https://www.gymshark.com/collections/all-products/mens",
+      "set": "production"
+    },
+    {
+      "id": "www-seriouseats-com-classic-panzanella-salad-recipe",
+      "url": "https://www.seriouseats.com/classic-panzanella-salad-recipe",
+      "set": "production"
+    },
+    {
+      "id": "food52-com-recipes",
+      "url": "https://food52.com/recipes",
+      "set": "production"
+    },
+    {
+      "id": "www-ikea-com-us-en-cat-sofas-fu003",
+      "url": "https://www.ikea.com/us/en/cat/sofas-fu003/",
+      "set": "production"
+    },
+    {
+      "id": "vite-dev-guide",
+      "url": "https://vite.dev/guide/",
+      "set": "production"
+    },
+    {
+      "id": "developer-mozilla-org-en-us-docs-web-css-display",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/CSS/display",
+      "set": "production"
+    },
+    {
+      "id": "admission-usc-edu-apply-faq",
+      "url": "https://admission.usc.edu/apply/faq/",
+      "set": "production"
+    },
+    {
+      "id": "docs-astro-build-en-install-and-setup",
+      "url": "https://docs.astro.build/en/install-and-setup/",
+      "set": "production"
+    },
+    {
+      "id": "www-bbc-co-uk-news-in-pictures",
+      "url": "https://www.bbc.co.uk/news/in_pictures",
+      "set": "production"
+    },
+    {
+      "id": "design-system-service-gov-uk-components-accordion",
+      "url": "https://design-system.service.gov.uk/components/accordion/",
+      "set": "negative"
+    },
+    {
+      "id": "www-ca-gov-departments",
+      "url": "https://www.ca.gov/departments/",
+      "set": "negative"
+    },
+    {
+      "id": "getbootstrap-com-docs-5-3-components-accordion",
+      "url": "https://getbootstrap.com/docs/5.3/components/accordion/",
+      "set": "negative"
+    },
+    {
+      "id": "www-nhs-uk-conditions",
+      "url": "https://www.nhs.uk/conditions/",
+      "set": "negative"
+    }
+  ]
+}
