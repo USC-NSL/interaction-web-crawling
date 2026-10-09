@@ -476,7 +476,10 @@
       "variant": "spa",
       "resource_sentinels": [
         "/sentinel/click-router/spa/01.png",
-        "/sentinel/click-router/spa/02.png"
+        "/sentinel/click-router/spa/02.png",
+        "/sentinel/click-router/spa/03.png",
+        "/sentinel/click-router/spa/04.png",
+        "/sentinel/click-router/spa/05.png"
       ],
       "text_sentinels": [],
       "required_actions": [
@@ -487,12 +490,17 @@
         {
           "type": "click",
           "selector": "button.reveal[data-idx='02']"
+        },
+        {
+          "type": "click",
+          "selector": ".loadmore-trigger",
+          "repeat": 3
         }
       ],
       "expect_static_discoverable": false,
       "guard_observable": true,
       "viewport_min_height_px": 720,
-      "notes": "A client-side router that renders from the URL, also on popstate. Two navigation buttons and a router link push routes (?view=...); the two reveal cards exist only in the home view; the sort button changes the URL with replaceState. A crawler that clicks the navigation first must restore the route through a popstate: after one push and back() a forward entry exists, the next push leaves history.length unchanged, and a restore that only puts the URL back with replaceState leaves the router on the other view, so the reveal cards are gone. The sort click replaces the entry, so the original route cannot be traversed back to; it changes the route and reveals no sentinel, since a route change is not a reveal. guard_observable derived empirically: A6 FAILS under guard-removal."
+      "notes": "A client-side router that renders from the URL, also on popstate. Two navigation buttons and a router link push path routes (/pages/click/router-spa.html/<view>); the two reveal cards and a load-more list exist only in the home view. A crawler that clicks the navigation first must restore the route through a popstate: after one push and back() a forward entry exists, the next push leaves history.length unchanged, and a restore that only puts the URL back with replaceState leaves the router on the other view, so the home view is gone. Load more pushes ?page=N and appends one page with one sentinel; the router draws as many pages as the URL says, so a crawler that undoes ?page=1 gets page 0 redrawn and recovers only the first page. The sort click replaces the path, so the original route cannot be traversed back to; it reveals no sentinel, since a route change is not a reveal. guard_observable derived empirically: A6 FAILS under guard-removal."
     }
   ]
 }

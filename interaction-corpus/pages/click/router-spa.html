@@ -19,6 +19,12 @@
   .card + .card { margin-top: 12px; }
   .revealed { margin: 8px 0 0; color: #55555f; }
   .revealed[hidden] { display: none; }
+  .results { list-style: none; margin: 16px 0 0; padding: 0; }
+  .results li { display: flex; align-items: center; gap: 14px; padding: 10px 14px; margin-bottom: 8px;
+                border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; }
+  .results img { width: 72px; height: 48px; flex: none; background: #e4e4ee; border-radius: 4px; }
+  .loadmore-trigger { display: block; width: 100%; margin-top: 12px; }
+  .loadmore-trigger.is-exhausted { color: #8a8a95; cursor: default; }
   .toolbar { margin-top: 16px; }
 </style>
 </head>
@@ -26,14 +32,15 @@
 <main>
   <h1>click-router-spa</h1>
   <p class="lede">
-    A single-page app with a client-side router. The navigation changes the route with
-    history.pushState and the router renders the view from the URL, also on popstate. The
-    cards below are part of the home view only. "Sort: newest first" changes the URL with
-    history.replaceState, so it is a route change rather than a reveal. Click both "Show
-    details" buttons.
+    A single-page app with a client-side router. The navigation changes the route's path with
+    history.pushState, and the router renders the view from the URL, also on popstate. The
+    cards and the results are part of the home view only. "Load more" adds ?page=N to the URL
+    with history.pushState and appends that page; the router draws as many pages as the URL
+    says. "Sort: newest first" replaces the path with history.replaceState. Click both "Show
+    details" buttons, then "Load more" until there are no more results.
   </p>
   <nav>
-    <a href="?view=docs" class="route-link" data-view="docs">Docs</a>
+    <a href="/pages/click/router-spa.html/docs" class="route-link" data-view="docs">Docs</a>
     <button type="button" class="route" data-view="guide">Guide</button>
     <button type="button" class="route" data-view="changelog">Changelog</button>
   </nav>
@@ -62,16 +69,38 @@
     return img;
   }
 
+  const BASE = '/pages/click/router-spa.html';
   const TITLES = {docs: 'Docs', guide: 'Guide', changelog: 'Changelog'};
+  // One sentinel per results page, ?page=1 to ?page=3.
+  const PAGES = ['03', '04', '05'];
   const opened = new Set();
   const view = document.getElementById('view');
 
+  function currentPage() {
+    const n = parseInt(new URLSearchParams(location.search).get('page') || '0', 10);
+    return Math.min(Math.max(n, 0), PAGES.length);
+  }
+
+  function appendPage(list, n) {
+    const item = document.createElement('li');
+    const img = fetchSentinel(PAGES[n - 1]);
+    if (img) {
+      img.alt = '';
+      item.appendChild(img);
+    }
+    const text = document.createElement('div');
+    text.textContent = 'Results page ' + n + '.';
+    item.appendChild(text);
+    list.appendChild(item);
+  }
+
   // The router renders from the URL, so it follows pushState, replaceState and popstate
-  // the way a framework router does: a URL put back without a popstate leaves it behind.
+  // the way a framework router does: a URL put back without a popstate leaves it behind,
+  // and a URL put back with one redraws the view as that URL says.
   function render() {
-    const name = new URLSearchParams(location.search).get('view');
+    const name = location.pathname.startsWith(BASE + '/') ? location.pathname.slice(BASE.length + 1) : '';
     view.replaceChildren();
-    if (name) {
+    if (TITLES[name]) {
       const card = document.createElement('div');
       card.className = 'card';
       card.textContent = TITLES[name] + ' view, rendered by the router.';
@@ -98,10 +127,33 @@
       card.append(button, text);
       view.append(card);
     });
+
+    const list = document.createElement('ul');
+    list.className = 'results';
+    const shown = currentPage();
+    for (let n = 1; n <= shown; n++) appendPage(list, n);
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'loadmore-trigger';
+    function exhaust() {
+      more.classList.add('is-exhausted');
+      more.textContent = 'No more results';
+    }
+    more.textContent = 'Load more';
+    if (shown >= PAGES.length) exhaust();
+    // Stays clickable when exhausted, so that repeating the action is a no-op.
+    more.addEventListener('click', function () {
+      const n = currentPage() + 1;
+      if (n > PAGES.length) return;
+      history.pushState(history.state, '', BASE + '?page=' + n);
+      appendPage(list, n);
+      if (n >= PAGES.length) exhaust();
+    });
+    view.append(list, more);
   }
 
   function go(name) {
-    history.pushState({view: name}, '', '?view=' + name);
+    history.pushState({view: name}, '', BASE + '/' + name);
     render();
   }
   document.querySelector('.route-link').addEventListener('click', function (event) {
@@ -114,7 +166,7 @@
   window.addEventListener('popstate', render);
 
   document.getElementById('sort').addEventListener('click', function () {
-    history.replaceState(history.state, '', '?sort=newest');
+    history.replaceState(history.state, '', BASE + '/newest');
     document.getElementById('sort-text').hidden = false;
   });
 
