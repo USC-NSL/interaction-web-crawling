@@ -33,7 +33,9 @@ EVAL = RUNS / "eval"
 sys.path.insert(0, str(PKG_ROOT / "tools"))
 from pilot_analyse import (PostHocBlocker, crawl_log, iou, is_icon, ts,  # noqa: E402
                            url_key, warc_types)
-from rescreen_analyse import analyse as explorer_analyse, explorer_result  # noqa: E402
+from rescreen_analyse import analyse as explorer_analyse, classify, explorer_result  # noqa: E402
+from rescreen_analyse import CLASSES as ALL_CLASSES, TRACKING  # noqa: E402
+from warcio.archiveiterator import ArchiveIterator  # noqa: E402
 from screen import normalise_request as path_key  # noqa: E402
 
 CLASSES = ("content", "functional", "presentational")
@@ -80,6 +82,25 @@ def filtered(urls: dict[str, str], page_url: str, blocker: PostHocBlocker,
     return out
 
 
+def warc_meta(job_dir: Path) -> dict[str, dict]:
+    """Like warc_types, with the response's content type and size, for classifying."""
+    out: dict[str, dict] = {}
+    for warc in sorted(job_dir.glob("collections/*/archive/*.warc.gz")):
+        with open(warc, "rb") as fh:
+            for rec in ArchiveIterator(fh):
+                if rec.rec_type not in ("response", "revisit") or rec.http_headers is None:
+                    continue
+                target = rec.rec_headers.get_header("WARC-Target-URI") or ""
+                if not target.startswith("http") or rec.http_headers.get_statuscode() != "200":
+                    continue
+                size = rec.http_headers.get_header("Content-Length")
+                out.setdefault(url_key(target), {
+                    "type": rec.rec_headers.get_header("WARC-Resource-Type") or "",
+                    "content_type": rec.http_headers.get_header("Content-Type") or "",
+                    "size": int(size) if size and size.isdigit() else None})
+    return out
+
+
 def explorer_baseline(ex: dict) -> tuple[dict[str, str], set[str]]:
     runs = [r for r in ex["runs"] if "baseline_raw" in r]
     types: dict[str, str] = {}
@@ -92,6 +113,22 @@ def explorer_baseline(ex: dict) -> tuple[dict[str, str], set[str]]:
             if r["baseline_status"].get(path_key(raw)) == 200:
                 base[url_key(raw)] = types.get(url_key(raw), "")
     return base, set(ex.get("periodic_patterns", []))
+
+
+def outside_pool(urls: set[str], meta: dict[str, dict], source: str, noise: set[str],
+                 explorer_click: set[str]) -> dict:
+    """Per class: how many, how many of those the explorer also clicked to (in a class
+    the pool does not score), and some examples."""
+    out: dict = {}
+    for u in sorted(urls):
+        m = meta.get(u) or {"type": "", "content_type": "", "size": None}
+        cls, _rule = classify(u, {**m, "first_action": "click", "target": ""}, source, noise, {})
+        row = out.setdefault(cls, {"n": 0, "explorer_found": 0, "examples": []})
+        row["n"] += 1
+        row["explorer_found"] += u in explorer_click
+        if len(row["examples"]) < 5:
+            row["examples"].append(u)
+    return {c: out[c] for c in (*ALL_CLASSES, TRACKING) if c in out}
 
 
 # ---- logs ----------------------------------------------------------------------------
@@ -252,6 +289,13 @@ def main() -> int:
         entry["pool"] = {c: len(v) for c, v in pool.items()}
         entry["pool_in_baseline"] = sorted(u for u in click if u in baseline)[:50]
 
+        # fetches outside the pool are classified with the explorer's rules, as a click
+        # would be; the explorer's own noise list stands in for its T1 rule
+        noise = {path_key(n["url"]) for r in ex["runs"] for n in r.get("noise_filtered") or []}
+        source = next((r["settled_url"] for r in ex["runs"] if "settled_url" in r), p["url"])
+        in_pool = set().union(*pool.values())
+        crawl_meta: dict[str, dict] = {}
+
         configs: dict = {}
         f_iso_logs, f_iso_new = [], set()
         # A fetch counts as click-caused only if no zero-click run of this page made it:
@@ -267,7 +311,10 @@ def main() -> int:
                     jd = pd / f"{cfg}-{mode}-r{rep}"
                     if not (jd / "done.json").exists():
                         continue
-                    types = warc_types(jd)
+                    meta = warc_meta(jd)
+                    for u, m in meta.items():
+                        crawl_meta.setdefault(u, m)
+                    types = {u: m["type"] for u, m in meta.items()}
                     new = filtered(types, p["url"], blocker, periodic) - baseline
                     log = crawl_log(jd)
                     t, to = behavior_time(log)
@@ -293,7 +340,8 @@ def main() -> int:
                     "time": [r["time"] for r in reps], "timed_out": [r["timed_out"] for r in reps],
                     "clicks": [r["clicks"] for r in reps],
                     "new_total": [len(r["new"]) for r in reps],
-                    "new_outside_pool": sorted(union - set().union(*pool.values()))[:50],
+                    "outside_pool": outside_pool(union - in_pool, crawl_meta, source, noise,
+                                                 set(click)),
                     "revealclick": [r["rc"] for r in reps] if cfg in ("C", "F", "F2") else None,
                 }
         for key, news in rep_new.items():
