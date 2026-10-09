@@ -467,6 +467,37 @@
       "guard_observable": true,
       "viewport_min_height_px": 720,
       "notes": "Gallery of links to full-size images (<a href=\"...large-0N.jpg\">, another document) whose click handler cancels the navigation and loads the image into a viewer. A crawler that never clicks links to other documents misses all three; one that clicks links with a click listener, behind a navigation guard, recovers them. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "click-router-spa",
+      "path": "pages/click/router-spa.html",
+      "mechanism": "click",
+      "submechanism": "router",
+      "variant": "spa",
+      "resource_sentinels": [
+        "/sentinel/click-router/spa/01.png",
+        "/sentinel/click-router/spa/02.png",
+        "/sentinel/click-router/spa/03.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": "button.reveal[data-idx='01']"
+        },
+        {
+          "type": "click",
+          "selector": "button.reveal[data-idx='02']"
+        },
+        {
+          "type": "click",
+          "selector": "#sort"
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "A client-side router that renders from the URL, also on popstate. Two navigation buttons and a router link push routes (?view=...); the two reveal cards exist only in the home view; the sort button changes the URL with replaceState. A crawler that clicks the navigation first must restore the route through a popstate: after one push and back() a forward entry exists, the next push leaves history.length unchanged, and a restore that only puts the URL back with replaceState leaves the router on the other view, so the reveal cards are gone. The sort click replaces the entry, so the original route cannot be traversed back to. guard_observable derived empirically: A6 FAILS under guard-removal."
     }
   ]
 }

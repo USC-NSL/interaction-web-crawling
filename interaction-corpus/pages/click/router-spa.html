@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-router-spa</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 32px 24px 96px; font: 16px/1.55 -apple-system, BlinkMacSystemFont,
+         "Segoe UI", Helvetica, Arial, sans-serif; color: #1b1b1f; background: #fbfbfd; }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .lede { margin: 0 0 20px; color: #55555f; }
+  nav { display: flex; gap: 8px; align-items: center; margin: 0 0 16px; }
+  button { font: inherit; padding: 6px 12px; border: 1px solid #c9c9d4; border-radius: 6px;
+           background: #f3f3f8; cursor: pointer; }
+  .card { border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; padding: 14px 16px; }
+  .card + .card { margin-top: 12px; }
+  .revealed { margin: 8px 0 0; color: #55555f; }
+  .revealed[hidden] { display: none; }
+  .toolbar { margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-router-spa</h1>
+  <p class="lede">
+    A single-page app with a client-side router. The navigation changes the route with
+    history.pushState and the router renders the view from the URL, also on popstate. The
+    cards below are part of the home view only. "Sort: newest first" changes the URL with
+    history.replaceState. Click both "Show details" buttons, then the sort button.
+  </p>
+  <nav>
+    <a href="?view=docs" class="route-link" data-view="docs">Docs</a>
+    <button type="button" class="route" data-view="guide">Guide</button>
+    <button type="button" class="route" data-view="changelog">Changelog</button>
+  </nav>
+  <div id="view"></div>
+  <div class="toolbar">
+    <button type="button" id="sort">Sort: newest first</button>
+    <p class="revealed" id="sort-text" hidden>Showing the newest entries first.</p>
+  </div>
+</main>
+
+<script>
+  const MECH = 'click-router';
+  const VARIANT = 'spa';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  // Fetch each sentinel at most once per page load: the guard is the first statement.
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  const TITLES = {docs: 'Docs', guide: 'Guide', changelog: 'Changelog'};
+  const opened = new Set();
+  const view = document.getElementById('view');
+
+  // The router renders from the URL, so it follows pushState, replaceState and popstate
+  // the way a framework router does: a URL put back without a popstate leaves it behind.
+  function render() {
+    const name = new URLSearchParams(location.search).get('view');
+    view.replaceChildren();
+    if (name) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.textContent = TITLES[name] + ' view, rendered by the router.';
+      view.append(card);
+      return;
+    }
+    ['01', '02'].forEach(function (idx) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'reveal';
+      button.dataset.idx = idx;
+      button.textContent = 'Show details';
+      const text = document.createElement('p');
+      text.className = 'revealed';
+      text.textContent = 'Details for card ' + idx + '.';
+      text.hidden = !opened.has(idx);
+      button.addEventListener('click', function () {
+        opened.add(idx);
+        text.hidden = false;
+        fetchSentinel(idx);
+      });
+      card.append(button, text);
+      view.append(card);
+    });
+  }
+
+  function go(name) {
+    history.pushState({view: name}, '', '?view=' + name);
+    render();
+  }
+  document.querySelector('.route-link').addEventListener('click', function (event) {
+    event.preventDefault();
+    go(this.dataset.view);
+  });
+  document.querySelectorAll('button.route').forEach(function (button) {
+    button.addEventListener('click', function () { go(button.dataset.view); });
+  });
+  window.addEventListener('popstate', render);
+
+  document.getElementById('sort').addEventListener('click', function () {
+    history.replaceState(history.state, '', '?sort=newest');
+    document.getElementById('sort-text').hidden = false;
+    fetchSentinel('03');
+  });
+
+  render();
+</script>
+</body>
+</html>
