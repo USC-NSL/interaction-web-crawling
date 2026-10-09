@@ -113,6 +113,24 @@ CONSENT_WORDS = re.compile(r"\b(cookies?|consent)\b", re.IGNORECASE)
 # A link to another document with a click listener is clicked only if it points at an
 # image or video (a lightbox). Other listener links are mostly client-side router links.
 MEDIA_PATH = re.compile(r"\.(jpe?g|png|gif|webp|avif|svg|bmp|mp4|webm|mov|m4v|ogv)$", re.IGNORECASE)
+# Puts a click's route change back: traverse to the entry the click left if it pushed
+# one (the page's router follows the popstate), else put the URL back with
+# replaceState, which cannot restore the router's own state.
+RESTORE_ROUTE_JS = """async ([url, key]) => {
+  const nav = window.navigation;
+  if (nav && key && nav.currentEntry && nav.currentEntry.key !== key) {
+    const ok = await Promise.race([
+      new Promise((resolve) => {
+        window.addEventListener('popstate', () => resolve(true), {once: true});
+        nav.traverseTo(key).finished.catch(() => resolve(false));
+      }),
+      new Promise((resolve) => setTimeout(() => resolve(false), 2000)),
+    ]);
+    if (ok) return 'traverse';
+  }
+  history.replaceState(window.__exploreState ?? null, '', url);
+  return 'replaceState';
+}"""
 CONSENT_ACTIONS = re.compile(r"\b(accept|agree|allow|reject)\b", re.IGNORECASE)
 
 # Request guard: after load, only GET and HEAD leave the page, plus these reads.
@@ -518,6 +536,7 @@ class Explorer:
         self._blocked_len = -1
         self.main_scrolled_to: int = 0
         self.nav_excluded_actions: set[int] = set()
+        self.route_change_actions: set[int] = set()  # clicks that changed the URL
         self.baseline_window: tuple[float, float] = (0.0, 0.0)
         self.settled_url = url
         self.target_norm = normalise_request(url)
@@ -809,8 +828,13 @@ class Explorer:
                 out.append(frame)
         return out
 
-    def check_navigation(self, act: dict) -> bool:
-        """True if this action tried to leave the page. Reverts if it managed to."""
+    def check_navigation(self, act: dict, before: tuple[str, str | None] | None = None) -> bool:
+        """True if this action tried to leave the page. Reverts if it managed to.
+
+        before is (url, history entry key) from just before a click: a click that
+        changed the URL in any way, query and fragment included, is a route change,
+        not a reveal, and what it fetched stays out of the pool.
+        """
         navigated = act["id"] in self.nav_excluded_actions
         try:
             now = self.page.url
@@ -821,12 +845,40 @@ class Explorer:
             # navigation (a different "page" of an SPA is not a reveal on this one).
             navigated = True
             self.nav_excluded_actions.add(act["id"])
-            entry = {"from_action": act["id"], "url": now, "reverted_by": None}
+            if before:
+                self.route_change_actions.add(act["id"])
+            entry = {"from_action": act["id"], "url": now,
+                     "kind": "route change" if before else "soft navigation", "reverted_by": None}
             self.soft_navigations.append(entry)
             entry["reverted_by"] = self.revert()
+        elif before and now != before[0]:
+            navigated = True
+            self.nav_excluded_actions.add(act["id"])
+            self.route_change_actions.add(act["id"])
+            entry = {"from_action": act["id"], "url": now, "kind": "route change",
+                     "reverted_by": None}
+            self.soft_navigations.append(entry)
+            try:
+                entry["reverted_by"] = self.page.evaluate(RESTORE_ROUTE_JS, list(before))
+                self.settle()
+            except Exception as exc:  # noqa: BLE001
+                entry["reverted_by"] = f"failed ({type(exc).__name__})"
         if navigated:
             act["navigated"] = True
         return navigated
+
+    def route_before(self) -> tuple[str, str | None]:
+        """The URL and history entry key before a click, keeping history.state for
+        a replaceState restore."""
+        try:
+            key = self.page.evaluate("""() => {
+              window.__exploreState = history.state;
+              return window.navigation && navigation.currentEntry
+                ? navigation.currentEntry.key : null;
+            }""")
+        except Exception:  # noqa: BLE001
+            key = None
+        return self.page.url, key
 
     def revert(self) -> str:
         rev = self.begin("revert", self.settled_url, 1, counts=False)
@@ -1116,6 +1168,7 @@ class Explorer:
             if self.caps_reached():
                 return
             before = self.visible_lines()
+            route = self.route_before()
             act = self.begin("click", cand["selector"], n, element=cand["id"],
                              name=cand["name"][:80], via=cand["via"], sources=cand["sources"], frame=cand["frame"],
                              **{"pass": pass_no})
@@ -1128,8 +1181,9 @@ class Explorer:
                                              "reason": act["outcome"]})
                 return
             self.settle()
-            if self.check_navigation(act):
-                act["outcome"] = "navigated (blocked or reverted); not a reveal"
+            if self.check_navigation(act, route):
+                act["outcome"] = ("route change; not a reveal" if act["id"] in self.route_change_actions
+                                  else "navigated (blocked or reverted); not a reveal")
                 self.absorb_text()
                 return
             after = self.visible_lines()
@@ -1149,13 +1203,14 @@ class Explorer:
             lost = sum(len(x) for x in before - after)
             gained = sum(len(x) for x in after - before)
             if lost > 0 and lost > RESTORE_LOSS_RATIO * gained and not self.caps_reached():
+                route = self.route_before()
                 rest = self.begin("click", cand["selector"], n + 1, element=cand["id"],
                                   name=cand["name"][:80], via=cand["via"], sources=cand["sources"], frame=cand["frame"],
                                   restore=True, **{"pass": pass_no})
                 try:
                     locator.click(timeout=CLICK_TIMEOUT_MS)
                     self.settle()
-                    if not self.check_navigation(rest):
+                    if not self.check_navigation(rest, route):
                         restored = self.visible_lines()
                         rest["outcome"] = ("restored" if (before - after) <= restored
                                            else "restore attempted, state differs")
@@ -1409,7 +1464,9 @@ class Explorer:
             if act.get("sweep"):
                 attribution["sweep"] = act["sweep"]
             if aid in self.nav_excluded_actions:
-                excluded_nav.append({"url": u, **attribution})
+                excluded_nav.append({"url": u, **attribution,
+                                     "reason": ("route change" if aid in self.route_change_actions
+                                                else "navigation")})
                 continue
             if u in self.blocked_seen:
                 # Never fetched: the blocker aborted it. Out of the pool, and listed
