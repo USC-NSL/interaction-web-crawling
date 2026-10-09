@@ -110,6 +110,9 @@ def deny_rule(prefix: str, matched: str) -> str:
         text = "add ... to " + text.rsplit(" to ", 1)[1]
     return f"{prefix}:{text}"
 CONSENT_WORDS = re.compile(r"\b(cookies?|consent)\b", re.IGNORECASE)
+# A link to another document with a click listener is clicked only if it points at an
+# image or video (a lightbox). Other listener links are mostly client-side router links.
+MEDIA_PATH = re.compile(r"\.(jpe?g|png|gif|webp|avif|svg|bmp|mp4|webm|mov|m4v|ogv)$", re.IGNORECASE)
 CONSENT_ACTIONS = re.compile(r"\b(accept|agree|allow|reject)\b", re.IGNORECASE)
 
 # Request guard: after load, only GET and HEAD leave the page, plus these reads.
@@ -1185,12 +1188,13 @@ class Explorer:
         else:
             safe, reason, kind = click_is_safe(cand, self.settled_url,
                                                label_max_words=LABEL_MAX_WORDS)
-            # A link to another document with its own click listener is often a
-            # lightbox or a JS-handled control, not a plain navigation. Click it: the
-            # navigation guard answers any main-frame navigation with 204. The scheme
-            # and path rules ran before this check, so they still apply.
+            # A link to an image or video with its own click listener is a lightbox,
+            # not a plain navigation. Click it: the navigation guard answers any
+            # main-frame navigation with 204. The scheme and path rules ran before
+            # this check, so they still apply.
             if (kind == "unsuitable" and reason == "link navigates away from the page under test"
                     and "cdp-listener-click" in (cand.get("via") or [])
+                    and MEDIA_PATH.search(urllib.parse.urlsplit(cand.get("href") or "").path)
                     and (cand.get("target") or "").lower() != "_blank"):
                 safe, reason, kind = True, "", "ok"
             if not safe:
