@@ -250,6 +250,12 @@ def main() -> int:
 
         configs: dict = {}
         f_iso_logs, f_iso_new = [], set()
+        # A fetch counts as click-caused only if no zero-click run of this page made it:
+        # the no-behavior crawl (already the baseline) and every config run with 0 clicks.
+        # Compared by scheme, host and path: a query that changes per request (a
+        # cache-buster, a sensor's nonce) would make every repeat look new.
+        rep_new: dict[str, list[set]] = {}
+        zero_click: set = set()
         for cfg in CONFIGS:
             for mode in MODES:
                 reps = []
@@ -268,12 +274,15 @@ def main() -> int:
                     else:
                         rec["clicks"] = stock_clicks(log)
                     reps.append(rec)
+                    if rec["clicks"] == 0:
+                        zero_click |= {path_key(u) for u in new}
                     if cfg == "F" and mode == "iso":
                         f_iso_logs.append(rec["rc"])
                         f_iso_new |= new
                 if not reps:
                     continue
                 union = set().union(*(r["new"] for r in reps))
+                rep_new[f"{cfg}-{mode}"] = [r["new"] for r in reps]
                 configs[f"{cfg}-{mode}"] = {
                     "recall": {c: ([len(r["new"] & pool[c]) for r in reps], len(union & pool[c]), len(pool[c]))
                                for c in CLASSES},
@@ -283,6 +292,11 @@ def main() -> int:
                     "new_outside_pool": sorted(union - set().union(*pool.values()))[:50],
                     "revealclick": [r["rc"] for r in reps] if cfg in ("C", "F", "F2") else None,
                 }
+        for key, news in rep_new.items():
+            caused = [{u for u in n if path_key(u) not in zero_click} for n in news]
+            configs[key]["click_caused"] = [len(c) for c in caused]
+            configs[key]["click_caused_urls"] = sorted(set().union(*caused))[:50]
+        entry["zero_click_runs_new"] = sorted(zero_click)[:50]
         entry["configs"] = configs
         missed = sorted(set().union(*pool.values()) - f_iso_new)
         entry["gaps_F"] = [{"url": u, "class": row["gated"][u]["class"],
