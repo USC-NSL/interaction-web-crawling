@@ -210,8 +210,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", type=Path, default=EVAL)
     ap.add_argument("--pages-file", type=Path, default=PKG_ROOT / "tools" / "eval_pages.json")
+    ap.add_argument("--judgments", type=Path,
+                    help="JSON with noncontent_ok and excluded, replacing the eval judgments")
     args = ap.parse_args()
     EVAL = args.run_dir.resolve()
+    if args.judgments:
+        judged = json.loads(args.judgments.read_text())
+        NONCONTENT_OK.clear(), NONCONTENT_OK.update(judged["noncontent_ok"])
+        EXCLUDED.clear(), EXCLUDED.update(judged["excluded"])
     pages = json.loads(args.pages_file.read_text())["pages"]
     blocker = PostHocBlocker()
     report: dict = {"pages": {}}
