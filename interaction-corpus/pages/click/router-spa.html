@@ -29,7 +29,8 @@
     A single-page app with a client-side router. The navigation changes the route with
     history.pushState and the router renders the view from the URL, also on popstate. The
     cards below are part of the home view only. "Sort: newest first" changes the URL with
-    history.replaceState. Click both "Show details" buttons, then the sort button.
+    history.replaceState, so it is a route change rather than a reveal. Click both "Show
+    details" buttons.
   </p>
   <nav>
     <a href="?view=docs" class="route-link" data-view="docs">Docs</a>
@@ -115,7 +116,6 @@
   document.getElementById('sort').addEventListener('click', function () {
     history.replaceState(history.state, '', '?sort=newest');
     document.getElementById('sort-text').hidden = false;
-    fetchSentinel('03');
   });
 
   render();
