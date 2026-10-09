@@ -113,7 +113,7 @@ CONSENT_WORDS = re.compile(r"\b(cookies?|consent)\b", re.IGNORECASE)
 # A link to another document with a click listener is clicked only if it points at an
 # image or video (a lightbox). Other listener links are mostly client-side router links.
 MEDIA_PATH = re.compile(r"\.(jpe?g|png|gif|webp|avif|svg|bmp|mp4|webm|mov|m4v|ogv)$", re.IGNORECASE)
-# Puts a click's route change back: traverse to the entry the click left if it pushed
+# Puts a click's path change back: traverse to the entry the click left if it pushed
 # one (the page's router follows the popstate), else put the URL back with
 # replaceState, which cannot restore the router's own state.
 RESTORE_ROUTE_JS = """async ([url, key]) => {
@@ -536,7 +536,8 @@ class Explorer:
         self._blocked_len = -1
         self.main_scrolled_to: int = 0
         self.nav_excluded_actions: set[int] = set()
-        self.route_change_actions: set[int] = set()  # clicks that changed the URL
+        self.route_change_actions: set[int] = set()  # clicks that changed the path
+        self.state_url_changes: list[dict] = []        # clicks that changed query or fragment
         self.baseline_window: tuple[float, float] = (0.0, 0.0)
         self.settled_url = url
         self.target_norm = normalise_request(url)
@@ -831,9 +832,10 @@ class Explorer:
     def check_navigation(self, act: dict, before: tuple[str, str | None] | None = None) -> bool:
         """True if this action tried to leave the page. Reverts if it managed to.
 
-        before is (url, history entry key) from just before a click: a click that
-        changed the URL in any way, query and fragment included, is a route change,
-        not a reveal, and what it fetched stays out of the pool.
+        A click that changed the path (or the origin) is a route change, not a reveal:
+        what it fetched stays out of the pool. A query or fragment change (?page=2, a
+        hash tab, an anchor) is in-page state: it is kept, and its fetches count.
+        before is (url, history entry key) from just before a click.
         """
         navigated = act["id"] in self.nav_excluded_actions
         try:
@@ -845,24 +847,20 @@ class Explorer:
             # navigation (a different "page" of an SPA is not a reveal on this one).
             navigated = True
             self.nav_excluded_actions.add(act["id"])
-            if before:
-                self.route_change_actions.add(act["id"])
             entry = {"from_action": act["id"], "url": now,
                      "kind": "route change" if before else "soft navigation", "reverted_by": None}
             self.soft_navigations.append(entry)
-            entry["reverted_by"] = self.revert()
+            if before:
+                self.route_change_actions.add(act["id"])
+                try:
+                    entry["reverted_by"] = self.page.evaluate(RESTORE_ROUTE_JS, list(before))
+                    self.settle()
+                except Exception:  # noqa: BLE001
+                    pass
+            if normalise_request(self.page.url) != self.target_norm:
+                entry["reverted_by"] = self.revert()
         elif before and now != before[0]:
-            navigated = True
-            self.nav_excluded_actions.add(act["id"])
-            self.route_change_actions.add(act["id"])
-            entry = {"from_action": act["id"], "url": now, "kind": "route change",
-                     "reverted_by": None}
-            self.soft_navigations.append(entry)
-            try:
-                entry["reverted_by"] = self.page.evaluate(RESTORE_ROUTE_JS, list(before))
-                self.settle()
-            except Exception as exc:  # noqa: BLE001
-                entry["reverted_by"] = f"failed ({type(exc).__name__})"
+            self.state_url_changes.append({"from_action": act["id"], "url": now})
         if navigated:
             act["navigated"] = True
         return navigated
@@ -1554,6 +1552,7 @@ class Explorer:
             "blocked_navigations": self.blocked_navigations,
             "popups_closed": self.popups,
             "soft_navigations": self.soft_navigations,
+            "state_url_changes": self.state_url_changes,
             "action_counts": {k: sum(1 for a in counted if a["action"] == k)
                               for k in ("scroll", "hover", "click")},
             "actions": self.actions,
