@@ -244,9 +244,13 @@ def main() -> int:
                                            or ("identical" if entry["instrument"]["iou"] == 1.0 else ""))
         baseline = bt_f | ex_f
 
-        pool = {c: {u for u, g in row["gated"].items() if "click" in g["actions"] and g["class"] == c}
+        # the pool is the explorer's click-attributed finds only, minus the baseline: a
+        # resource either load already fetched cannot be a reveal for any config
+        click = {u: g for u, g in row["gated"].items() if "click" in g["actions"]}
+        pool = {c: {u for u, g in click.items() if g["class"] == c and u not in baseline}
                 for c in CLASSES}
         entry["pool"] = {c: len(v) for c, v in pool.items()}
+        entry["pool_in_baseline"] = sorted(u for u in click if u in baseline)[:50]
 
         configs: dict = {}
         f_iso_logs, f_iso_new = [], set()
