@@ -1,0 +1,50 @@
+{
+  "about": "eval4: production pages only, for the explorer with dispatched clicks",
+  "pages": [
+    {
+      "id": "www-gymshark-com-collections-all-products-mens",
+      "url": "https://www.gymshark.com/collections/all-products/mens",
+      "set": "production"
+    },
+    {
+      "id": "www-seriouseats-com-classic-panzanella-salad-recipe",
+      "url": "https://www.seriouseats.com/classic-panzanella-salad-recipe",
+      "set": "production"
+    },
+    {
+      "id": "food52-com-recipes",
+      "url": "https://food52.com/recipes",
+      "set": "production"
+    },
+    {
+      "id": "www-ikea-com-us-en-cat-sofas-fu003",
+      "url": "https://www.ikea.com/us/en/cat/sofas-fu003/",
+      "set": "production"
+    },
+    {
+      "id": "vite-dev-guide",
+      "url": "https://vite.dev/guide/",
+      "set": "production"
+    },
+    {
+      "id": "developer-mozilla-org-en-us-docs-web-css-display",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/CSS/display",
+      "set": "production"
+    },
+    {
+      "id": "admission-usc-edu-apply-faq",
+      "url": "https://admission.usc.edu/apply/faq/",
+      "set": "production"
+    },
+    {
+      "id": "docs-astro-build-en-install-and-setup",
+      "url": "https://docs.astro.build/en/install-and-setup/",
+      "set": "production"
+    },
+    {
+      "id": "www-bbc-co-uk-news-in-pictures",
+      "url": "https://www.bbc.co.uk/news/in_pictures",
+      "set": "production"
+    }
+  ]
+}
