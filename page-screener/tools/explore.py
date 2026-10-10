@@ -1492,6 +1492,7 @@ class Explorer:
         noise_filtered: list[dict] = []
         size_filtered: list[dict] = []
         excluded_nav: list[dict] = []
+        time_on_page: list[dict] = []
         exempted: list[dict] = []
         for u, rec in sorted(self.requests.items()):
             aid = rec["first_action"]
@@ -1506,6 +1507,11 @@ class Explorer:
                 attribution["sources"] = act["sources"]
             if act.get("sweep"):
                 attribution["sweep"] = act["sweep"]
+            if act.get("action") == "click" and act.get("outcome", "").startswith("not clickable"):
+                # The click never happened: whatever arrived while it was attempted
+                # is the page's own doing over time, not a reveal.
+                time_on_page.append({"url": u, **attribution})
+                continue
             if aid in self.nav_excluded_actions:
                 excluded_nav.append({"url": u, **attribution,
                                      "reason": ("route change" if aid in self.route_change_actions
@@ -1571,6 +1577,7 @@ class Explorer:
             "size_filtered": size_filtered,
             "noise_exempted": exempted,
             "excluded_navigation_side_effects": excluded_nav,
+            "time_on_page": time_on_page,
             "all_requests_raw": sorted({raw for r in self.requests.values() for raw in r["raw"]}),
             "caps": {"ended_by": ended_by, "actions_used": self.action_count,
                      "max_actions": self.opts.max_actions, "max_seconds": self.opts.max_seconds,
