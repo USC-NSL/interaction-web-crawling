@@ -1,0 +1,25 @@
+{
+  "about": "Instrument-check judgments for runs/eval3, from the differences in runs/eval3/report.json (instrument). Explorer and crawls ran back-to-back per page. A page is excluded when a difference is content (or content data); differences that are manifests, icons, consent, ads, syncs, telemetry or per-load random hosts are non-content.",
+  "noncontent_ok": {
+    "kenwheeler-github-io-slick": "the seed URL without its trailing slash; two ad-sync setuid requests",
+    "biati-digital-github-io-glightbox": "identical",
+    "flickity-metafizzy-co": "Twitter widget syndication URL differs by query only",
+    "keen-slider-io-examples": "web app manifest and its android-chrome icon (browser-only fetches)",
+    "vite-dev-guide": "identical",
+    "developer-mozilla-org-en-us-docs-web-css-display": "example runner on a random mdnplay.dev subdomain per load, rotating ad images, telemetry, manifest",
+    "admission-usc-edu-apply-faq": "web app manifest; WordPress emoji polyfill, loaded by feature detection",
+    "docs-astro-build-en-install-and-setup": "identical",
+    "www-bbc-co-uk-news-in-pictures": "Optimizely datafile, web app manifests and icon only in the crawl",
+    "design-system-service-gov-uk-components-accordion": "web app manifest",
+    "www-ca-gov-departments": "identical",
+    "getbootstrap-com-docs-5-3-components-accordion": "web app manifest and its icon",
+    "www-nhs-uk-conditions": "identical"
+  },
+  "excluded": {
+    "afarkas-github-io-lazysizes-index-html": "2 content images only in the explorer baseline",
+    "www-gymshark-com-collections-all-products-mens": "4 content images (_next/image) only in the explorer baseline, never in the no-behavior crawl; consent banner only in the explorer",
+    "www-seriouseats-com-classic-panzanella-salad-recipe": "video segments and video thumbnails differ; ads (IoU 0.47)",
+    "food52-com-recipes": "3 content-data queries (Sanity) only in the explorer baseline, in no crawl",
+    "www-ikea-com-us-en-cat-sofas-fu003": "107 product images only in the explorer baseline; store lookup and nudge overlay only in the crawl (IoU 0.69)"
+  }
+}
