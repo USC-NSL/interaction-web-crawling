@@ -26,6 +26,7 @@
   .loadmore-trigger { display: block; width: 100%; margin-top: 12px; }
   .loadmore-trigger.is-exhausted { color: #8a8a95; cursor: default; }
   .toolbar { margin-top: 16px; }
+  .pager-prev[aria-disabled="true"] { color: #8a8a95; cursor: default; }
 </style>
 </head>
 <body>
@@ -36,8 +37,10 @@
     history.pushState, and the router renders the view from the URL, also on popstate. The
     cards and the results are part of the home view only. "Load more" adds ?page=N to the URL
     with history.pushState and appends that page; the router draws as many pages as the URL
-    says. "Sort: newest first" replaces the path with history.replaceState. Click both "Show
-    details" buttons, then "Load more" until there are no more results.
+    says. "Previous page" is disabled (aria-disabled) on page 1, though its handler still sets
+    ?page=0, which the router draws as an empty page. "Sort: newest first" replaces the path
+    with history.replaceState. Click both "Show details" buttons, then "Load more" until there
+    are no more results.
   </p>
   <nav>
     <a href="/pages/click/router-spa.html/docs" class="route-link" data-view="docs">Docs</a>
@@ -107,6 +110,25 @@
       view.append(card);
       return;
     }
+    // A site bug kept on purpose: the control is disabled, but its handler still runs.
+    if (new URLSearchParams(location.search).get('page') === '0') {
+      const empty = document.createElement('div');
+      empty.className = 'card';
+      empty.textContent = 'No results on page 0.';
+      view.append(empty);
+      return;
+    }
+    const prev = document.createElement('button');
+    prev.type = 'button';
+    prev.className = 'pager-prev';
+    prev.setAttribute('aria-disabled', 'true');
+    prev.textContent = 'Previous page';
+    prev.addEventListener('click', function () {
+      history.pushState(history.state, '', BASE + '?page=' + Math.max(currentPage() - 1, 0));
+      render();
+    });
+    view.append(prev);
+
     ['01', '02'].forEach(function (idx) {
       const card = document.createElement('div');
       card.className = 'card';
