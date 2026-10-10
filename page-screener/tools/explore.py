@@ -42,6 +42,7 @@ import re
 import sys
 import time
 import urllib.parse
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -113,6 +114,32 @@ CONSENT_WORDS = re.compile(r"\b(cookies?|consent)\b", re.IGNORECASE)
 # A link to another document with a click listener is clicked only if it points at an
 # image or video (a lightbox). Other listener links are mostly client-side router links.
 MEDIA_PATH = re.compile(r"\.(jpe?g|png|gif|webp|avif|svg|bmp|mp4|webm|mov|m4v|ogv)$", re.IGNORECASE)
+# Clicks are dispatched to the element, as RevealClick does them, so an overlay or a
+# sticky header cannot swallow them. Before dispatching, a hit test at the element's
+# centre (after scrolling it into view, as a person would) records whether a real
+# pointer would have reached it, and if not, which element was on top.
+CLICK_STATE_JS = """(el) => !el.isConnected || !el.checkVisibility() ? 'not visible'
+  : el.matches('[disabled], [aria-disabled="true"]') ? 'disabled' : ''"""
+DISPATCH_CLICK_JS = """(el) => {
+  let r = el.getBoundingClientRect();
+  if (r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth) {
+    el.scrollIntoView({block: 'center', inline: 'center'});
+    r = el.getBoundingClientRect();
+  }
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  const hit = document.elementFromPoint(x, y);
+  const describe = (e) => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '')
+    + [...e.classList].slice(0, 2).map((c) => '.' + c).join('');
+  let interceptor = null;
+  if (!hit) interceptor = '(off-screen or zero size)';
+  else if (hit !== el && !el.contains(hit)) interceptor = describe(hit);
+  const init = {bubbles: true, cancelable: true, clientX: x, clientY: y};
+  for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+    el.dispatchEvent(type.startsWith('pointer')
+      ? new PointerEvent(type, {...init, pointerType: 'mouse'}) : new MouseEvent(type, init));
+  }
+  return {reachable: !interceptor, interceptor};
+}"""
 # Puts a click's path change back: traverse to the entry the click left if it pushed
 # one (the page's router follows the popstate), else put the URL back with
 # replaceState, which cannot restore the router's own state.
@@ -508,6 +535,7 @@ class Explorer:
         self.vetoes: list[dict] = []           # every refused click, with its kind
         self.safety_skips: list[dict] = []     # the subset that trips the halt gate
         self.unclickable: list[dict] = []
+        self.skipped_clicks: list[dict] = []   # not visible or disabled: never clicked
         self.scroll_containers: list[dict] = []
         self.listener_scans: list[dict] = []
         self.discovery_passes: list[dict] = []
@@ -1165,13 +1193,22 @@ class Explorer:
         for n in range(1, self.opts.max_clicks_per_element + 1):
             if self.caps_reached():
                 return
+            try:
+                state = locator.evaluate(CLICK_STATE_JS, timeout=CLICK_TIMEOUT_MS)
+            except Exception as exc:  # noqa: BLE001
+                state = f"gone ({type(exc).__name__})"
+            if state:
+                if n == 1:
+                    self.skipped_clicks.append({"target": cand["selector"], "name": own_name_of(cand),
+                                                "reason": state})
+                return
             before = self.visible_lines()
             route = self.route_before()
             act = self.begin("click", cand["selector"], n, element=cand["id"],
                              name=cand["name"][:80], via=cand["via"], sources=cand["sources"], frame=cand["frame"],
                              **{"pass": pass_no})
             try:
-                locator.click(timeout=CLICK_TIMEOUT_MS)
+                act.update(locator.evaluate(DISPATCH_CLICK_JS, timeout=CLICK_TIMEOUT_MS))
             except Exception as exc:  # noqa: BLE001
                 act["outcome"] = f"not clickable ({type(exc).__name__})"
                 if n == 1:
@@ -1206,7 +1243,7 @@ class Explorer:
                                   name=cand["name"][:80], via=cand["via"], sources=cand["sources"], frame=cand["frame"],
                                   restore=True, **{"pass": pass_no})
                 try:
-                    locator.click(timeout=CLICK_TIMEOUT_MS)
+                    rest.update(locator.evaluate(DISPATCH_CLICK_JS, timeout=CLICK_TIMEOUT_MS))
                     self.settle()
                     if not self.check_navigation(rest, route):
                         restored = self.visible_lines()
@@ -1431,6 +1468,14 @@ class Explorer:
                     row["elements_revealing"] += 1
         return stats
 
+    def click_reachability(self) -> dict:
+        """How many dispatched clicks a real pointer would not have reached, and what
+        was on top of the element instead."""
+        clicks = [a for a in self.actions if a["action"] == "click" and "reachable" in a]
+        blocked = [a for a in clicks if not a["reachable"]]
+        return {"clicks": len(clicks), "unreachable": len(blocked),
+                "by_interceptor": dict(Counter(a["interceptor"] for a in blocked).most_common(10))}
+
     def report(self, baseline_norm: list[str], ended_by: str | None) -> dict:
         meta = self.result.response_meta
         by_id = {a["id"]: a for a in self.actions}
@@ -1549,6 +1594,8 @@ class Explorer:
             "safety_vetoes": self.vetoes,
             "safety_skips_gate": self.safety_skips,
             "unclickable": self.unclickable,
+            "skipped_clicks": self.skipped_clicks,
+            "click_reachability": self.click_reachability(),
             "blocked_navigations": self.blocked_navigations,
             "popups_closed": self.popups,
             "soft_navigations": self.soft_navigations,
