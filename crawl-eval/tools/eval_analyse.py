@@ -147,7 +147,7 @@ def behavior_time(log: list[dict]) -> tuple[float | None, bool]:
     return (round(end - start, 1) if start and end else None), timed_out
 
 
-SKIP = re.compile(r'^Skipping element \((form|submit|path|consent|label "([^"]*)": (.*?))\): (.*)$')
+SKIP = re.compile(r'^Skipping element \((form|submit|path|consent|disabled|label "([^"]*)": (.*?))\): (.*)$')
 PHRASE = re.compile(r"add\b.*\bto\s|buy|check\s?out|wish\s?list|favou?rite|rate|rating|vote|helpful",
                     re.I)
 
@@ -265,6 +265,9 @@ def main() -> int:
         ex = explorer_result(ex_dir)
         row, _v = explorer_analyse({**p, "tag": p["set"], "dir": ex_dir}, blocker)
         entry: dict = {"url": p["url"], "set": p["set"], "explorer_dir": str(ex_dir)}
+        if ex is not None:
+            # dispatched explorer clicks a real pointer would not have reached, per run
+            entry["explorer_reachability"] = [r.get("click_reachability") for r in ex["runs"]]
         report["pages"][p["id"]] = entry
         if ex is None or not (pd / "none" / "done.json").exists():
             entry["status"] = "missing explorer result or no-behavior crawl"
