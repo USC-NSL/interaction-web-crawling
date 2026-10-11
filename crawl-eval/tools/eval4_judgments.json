@@ -1,0 +1,16 @@
+{
+  "about": "Instrument-check judgments for runs/eval4 (production pages, explorer with dispatched clicks), from the differences in runs/eval4/report.json (instrument). Same rule as eval3: a content or content-data difference excludes a page.",
+  "noncontent_ok": {
+    "vite-dev-guide": "identical",
+    "developer-mozilla-org-en-us-docs-web-css-display": "example runner on a random mdnplay.dev subdomain per load, rotating ad images, telemetry, manifest",
+    "admission-usc-edu-apply-faq": "web app manifest; WordPress emoji polyfill, loaded by feature detection",
+    "docs-astro-build-en-install-and-setup": "identical",
+    "www-bbc-co-uk-news-in-pictures": "web app manifests and icon only in the crawl"
+  },
+  "excluded": {
+    "www-gymshark-com-collections-all-products-mens": "5 content images (_next/image) only in the explorer baseline; AWS WAF challenge and consent only in the explorer",
+    "www-seriouseats-com-classic-panzanella-salad-recipe": "video segments differ; forms and ads (IoU 0.55)",
+    "food52-com-recipes": "3 content-data queries (Sanity) only in the explorer baseline; ad syncs",
+    "www-ikea-com-us-en-cat-sofas-fu003": "product images only in the explorer baseline; store lookup and nudge overlay only in the crawl (IoU 0.83)"
+  }
+}
