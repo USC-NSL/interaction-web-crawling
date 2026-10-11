@@ -1,0 +1,50 @@
+{
+  "about": "eval4, second part: demo and negative pages under the eval4 setup (same out dir, bundles and explorer)",
+  "pages": [
+    {
+      "id": "afarkas-github-io-lazysizes-index-html",
+      "url": "https://afarkas.github.io/lazysizes/index.html",
+      "set": "demo"
+    },
+    {
+      "id": "kenwheeler-github-io-slick",
+      "url": "https://kenwheeler.github.io/slick",
+      "set": "demo"
+    },
+    {
+      "id": "biati-digital-github-io-glightbox",
+      "url": "https://biati-digital.github.io/glightbox/",
+      "set": "demo"
+    },
+    {
+      "id": "flickity-metafizzy-co",
+      "url": "https://flickity.metafizzy.co/",
+      "set": "demo"
+    },
+    {
+      "id": "keen-slider-io-examples",
+      "url": "https://keen-slider.io/examples",
+      "set": "demo"
+    },
+    {
+      "id": "design-system-service-gov-uk-components-accordion",
+      "url": "https://design-system.service.gov.uk/components/accordion/",
+      "set": "negative"
+    },
+    {
+      "id": "www-ca-gov-departments",
+      "url": "https://www.ca.gov/departments/",
+      "set": "negative"
+    },
+    {
+      "id": "getbootstrap-com-docs-5-3-components-accordion",
+      "url": "https://getbootstrap.com/docs/5.3/components/accordion/",
+      "set": "negative"
+    },
+    {
+      "id": "www-nhs-uk-conditions",
+      "url": "https://www.nhs.uk/conditions/",
+      "set": "negative"
+    }
+  ]
+}
