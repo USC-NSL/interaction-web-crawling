@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-pagination-rerender</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 32px 24px 96px; font: 16px/1.55 -apple-system, BlinkMacSystemFont,
+         "Segoe UI", Helvetica, Arial, sans-serif; color: #1b1b1f; background: #fbfbfd; }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .lede { margin: 0 0 20px; color: #55555f; }
+  .page { border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; padding: 14px 16px; }
+  .page img { display: block; width: 120px; height: 80px; margin-top: 8px; background: #e4e4ee; }
+  .pager { display: flex; gap: 6px; margin-top: 14px; }
+  .pager button { font: inherit; padding: 6px 12px; border: 1px solid #c9c9d4; border-radius: 6px;
+                  background: #f3f3f8; cursor: pointer; }
+  .pager button[aria-current="page"] { background: #1b1b2a; color: #fff; }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-pagination-rerender</h1>
+  <p class="lede">
+    A paginated list. Each page button shows that page of results, and every page change
+    redraws the whole pagination bar, so the buttons are new elements each time, as on many
+    framework sites. Visit pages 2, 3 and 4.
+  </p>
+  <div class="page" id="page"></div>
+  <nav class="pager" id="pager" aria-label="Pagination"></nav>
+</main>
+
+<script>
+  const MECH = 'click-pagination';
+  const VARIANT = 'rerender';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  // Fetch each sentinel at most once per page load: the guard is the first statement.
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  const LAST = 4;
+  const page = document.getElementById('page');
+  const pager = document.getElementById('pager');
+  let current = 1;
+
+  function button(label, aria, target) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.setAttribute('aria-label', aria);
+    if (target === current && aria.startsWith('Go to page')) b.setAttribute('aria-current', 'page');
+    b.addEventListener('click', function () { show(target); });
+    return b;
+  }
+
+  // Page 1 is part of the page as loaded; pages 2-4 each fetch one sentinel.
+  function show(n) {
+    current = n;
+    page.replaceChildren();
+    const text = document.createElement('div');
+    text.textContent = 'Results page ' + n + ' of ' + LAST + '.';
+    page.append(text);
+    if (n > 1) {
+      const img = fetchSentinel('0' + (n - 1));
+      if (img) img.alt = '';
+      if (img) page.append(img);
+    }
+    // The whole bar is rebuilt: every button is a new node.
+    pager.replaceChildren(
+      button('Previous', 'Previous page', Math.max(1, n - 1)),
+      ...[1, 2, 3, 4].map(function (k) { return button(String(k), 'Go to page ' + k, k); }),
+      button('Next', 'Next page', Math.min(LAST, n + 1)));
+  }
+
+  show(1);
+</script>
+</body>
+</html>
