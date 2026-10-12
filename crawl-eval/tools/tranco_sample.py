@@ -65,8 +65,29 @@ AFTER_LOAD_MS = 3000
 THIN_CHARS = 500
 LOGIN_WALL_CHARS = 1500
 
+# Excluded categories, checked on the domain name before any load and on the homepage's
+# title and description after it, for every drawn domain (also ones screened earlier).
+GAMBLING = re.compile(r"casino|sportsbook|\bbet(s|ting)?\b|bet\d|\bslots?\b|jackpot|poker|"
+                      r"roulette|baccarat|lottery|\blotto\b|bingo|togel|\bjudi\b|gambl|"
+                      r"apuestas|scommesse|nổ hũ|lô đề|nhà cái|ставки|казино", re.I)
+PIRACY = re.compile(r"torrent|warez|\bcrack(ed|s)?\b|keygen|nulled|subtitles?\b|"
+                    r"(read|watch|listen|download)\b[^|]{0,40}\b(online )?(for )?free\b|"
+                    r"free (movies|manga|anime|ebooks?|audiobooks?|series)|mangas? online|"
+                    r"certifications? exams?|exam (questions|dumps)|braindumps?|"
+                    r"слушать онлайн|смотреть онлайн|скачать бесплатно", re.I)
 ADULT = re.compile(r"(^|[^a-z])(porn|xxx|sex|adult|nsfw|escort|hentai|nude|camgirl|"
                    r"onlyfans|erotic|fetish|milf|xvideos|xnxx|redtube|brazzers)", re.I)
+CATEGORIES = [("adult content", ADULT), ("gambling or betting", GAMBLING),
+              ("piracy-adjacent", PIRACY)]
+
+
+def excluded_category(text: str) -> str | None:
+    for name, rule in CATEGORIES:
+        if rule.search(text):
+            return name
+    return None
+
+
 CHALLENGE = re.compile(r"just a moment|attention required|cf-chl|checking your browser|"
                        r"verify you are (a )?human|captcha-delivery|px-captcha|"
                        r"access denied|request unsuccessful|pardon our interruption|"
@@ -196,8 +217,9 @@ async def render(browser, url: str) -> dict:
 async def screen_domain(i: int, rank: int, domain: str, browser, sem, loads: Loads,
                         robots: RobotsCache, args, rng_seed: str) -> dict:
     rec = {"draw": i, "rank": rank, "domain": domain}
-    if ADULT.search(domain):
-        return {**rec, "kept": False, "reason": "adult content", "detail": "domain name"}
+    category = excluded_category(re.sub(r"[.-]", " ", domain))
+    if category:
+        return {**rec, "kept": False, "reason": category, "detail": "domain name"}
 
     # robots.txt for the domain, then www. if the domain itself does not answer
     home, robots_res = None, None
@@ -228,10 +250,10 @@ async def screen_domain(i: int, rank: int, domain: str, browser, sem, loads: Loa
         return {**rec, "kept": False, "reason": "unreachable", "detail": info["error"]}
     final = info["final_url"]
     rec.update(homepage=final, status=info["status"], title=info["title"][:120],
-               text_chars=info["text"])
-    page_text = info["title"] + " " + info["description"]
-    if ADULT.search(page_text):
-        return {**rec, "kept": False, "reason": "adult content", "detail": "title/description"}
+               description=info["description"][:300], text_chars=info["text"])
+    category = excluded_category(info["title"] + " " + info["description"])
+    if category:
+        return {**rec, "kept": False, "reason": category, "detail": "title/description"}
     if CHALLENGE.search(info["title"]) or (info["status"] in (401, 403, 429, 503)
                                            and CHALLENGE.search(info["html"])):
         return {**rec, "kept": False, "reason": "bot challenge", "detail": info["title"][:80]}
@@ -328,6 +350,29 @@ async def main_async(args) -> int:
     sem = asyncio.Semaphore(RENDERS)
     stop = asyncio.Event()
 
+    def record(r: dict) -> None:
+        results[r["draw"]] = r
+        with done_path.open("a") as fh:
+            fh.write(json.dumps(r) + "\n")
+
+    # the exclusion rule applies to the whole draw, including domains screened earlier: a
+    # domain name match comes before every other reason, a title match before the reasons
+    # screening decides after reading the title
+    after_title = {"bot challenge", "not a website", "other domain", "login wall", "parked or thin"}
+    for r in list(results.values()):
+        if r.get("reason") in {name for name, _ in CATEGORIES}:
+            continue
+        by_name = excluded_category(re.sub(r"[.-]", " ", r["domain"]))
+        by_title = excluded_category(r.get("title", "") + " " + r.get("description", ""))
+        if by_name or (by_title and (r["kept"] or r.get("reason") in after_title)):
+            category = by_name or by_title
+            record({**r, "kept": False, "reason": category, "was": r.get("reason", "kept"),
+                    "detail": "reclassified: " + ("domain name" if by_name else "title"),
+                    "reclassified": True})
+            print(f"  [{r['draw']:3}] {r['domain']:40} excluded: {category} "
+                  f"(was {r.get('reason', 'kept')})", flush=True)
+
+
     def enough() -> bool:
         kept = 0
         for d in draw:
@@ -345,13 +390,13 @@ async def main_async(args) -> int:
                                                                 "--hide-scrollbars"])
         queue = [d for d in draw if d["draw"] not in results]
         active: set[asyncio.Task] = set()
+        if enough():
+            stop.set()      # the first --keep survivors are already known
 
         async def run_one(d: dict) -> None:
             r = await screen_domain(d["draw"], d["rank"], d["domain"], browser, sem, loads,
                                     robots, args, str(args.seed))
-            results[d["draw"]] = r
-            with done_path.open("a") as fh:
-                fh.write(json.dumps(r) + "\n")
+            record(r)
             mark = "kept" if r["kept"] else f"discard: {r['reason']}"
             print(f"  [{d['draw']:3}] #{d['rank']:<7} {d['domain']:40} {mark}"
                   + (f" ({len(r['pages'])} pages)" if r["kept"] else ""), flush=True)
@@ -395,12 +440,21 @@ def write_outputs(out: Path, draw: list[dict], results: dict[int, dict], args) -
                                for r in manual))
     reasons = Counter(r["reason"] for r in screened if not r["kept"])
     by_source = Counter(p["source"] for r in kept for p in r["pages"])
+    excluded = [r for r in screened if r.get("reclassified") and r.get("was") == "kept"]
+    # what the first --keep survivors were before the exclusion rule, to name the replacements
+    before = [r for r in screened if r["kept"] or r.get("was") == "kept"][:args.keep]
+    replaced_by = [r["domain"] for r in kept if r["domain"] not in {b["domain"] for b in before}]
     lines = [f"# Tranco sample: list {args.list_id}, seed {args.seed}", "",
              f"Drawn {len(draw)}, screened {len(screened)}, kept {len(kept)} "
              f"(first {args.keep} survivors in draw order).", "", "| discard reason | domains |",
              "|---|---|"] + [f"| {k} | {v} |" for k, v in reasons.most_common()] + [
              "", f"Internal pages: {dict(by_source)}; domains needing a manual site: search: "
-             f"{len(manual)}"]
+             f"{len(manual)}", "",
+             "Exclusion rule (whole draw, domain name before any load, title and description "
+             "after it):"] + [f"- {name}: `{rule.pattern}`" for name, rule in CATEGORIES] + [
+             "", "Excluded after screening (were survivors): "
+             + (", ".join(f"{r['domain']} ({r['reason']})" for r in excluded) or "none"),
+             "Replaced by the next survivors in draw order: " + (", ".join(replaced_by) or "none")]
     (out / "summary.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines), flush=True)
 
