@@ -114,6 +114,10 @@ CONSENT_WORDS = re.compile(r"\b(cookies?|consent)\b", re.IGNORECASE)
 # A link to another document with a click listener is clicked only if it points at an
 # image or video (a lightbox). Other listener links are mostly client-side router links.
 MEDIA_PATH = re.compile(r"\.(jpe?g|png|gif|webp|avif|svg|bmp|mp4|webm|mov|m4v|ogv)$", re.IGNORECASE)
+# Stream segments and manifests keep arriving while a player runs: they say nothing
+# about whether a click revealed something, so they never make a click novel.
+MEDIA_SEGMENT = re.compile(r"\.(m3u8|mpd|ts|m4s|m4a|m4v|mp4|webm|aac|vtt|cmfv|cmfa)$", re.IGNORECASE)
+
 # Clicks are dispatched to the element, as RevealClick does them, so an overlay or a
 # sticky header cannot swallow them. Before dispatching, a hit test at the element's
 # centre (after scrolling it into view, as a person would) records whether a real
@@ -892,7 +896,8 @@ class Explorer:
         blocked = self.blocked_norms()
         return sorted(u for u, r in self.requests.items()
                       if r["first_action"] == action_id and u not in blocked
-                      and self.content_rule(u) is None)
+                      and self.content_rule(u) is None
+                      and not MEDIA_SEGMENT.search(urllib.parse.urlsplit(u).path))
 
     def _frames(self):
         """The main frame and every same-origin child frame."""
