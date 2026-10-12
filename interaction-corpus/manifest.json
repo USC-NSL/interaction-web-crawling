@@ -624,6 +624,58 @@
       "guard_observable": true,
       "viewport_min_height_px": 720,
       "notes": "Four identical 'Read more' buttons (same text and attributes) in four cards, each revealing a different sentinel. A signature without the element's position collapses them to one and clicks only the first. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "click-loadmore-delayed",
+      "path": "pages/click/loadmore-delayed.html",
+      "mechanism": "click",
+      "submechanism": "loadmore",
+      "variant": "delayed",
+      "resource_sentinels": [
+        "/sentinel/click-loadmore/delayed/01.png",
+        "/sentinel/click-loadmore/delayed/02.png",
+        "/sentinel/click-loadmore/delayed/03.png",
+        "/sentinel/click-loadmore/delayed/04.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".loadmore-trigger"
+        },
+        {
+          "type": "wait",
+          "ms": 1500
+        },
+        {
+          "type": "click",
+          "selector": ".loadmore-trigger"
+        },
+        {
+          "type": "wait",
+          "ms": 1500
+        },
+        {
+          "type": "click",
+          "selector": ".loadmore-trigger"
+        },
+        {
+          "type": "wait",
+          "ms": 1500
+        },
+        {
+          "type": "click",
+          "selector": ".loadmore-trigger"
+        },
+        {
+          "type": "wait",
+          "ms": 1500
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": false,
+      "viewport_min_height_px": 720,
+      "notes": "Load more backed by a slow server: each click fetches the batch's data with serve.py's delay=800 parameter, then draws the batch and requests its image (the sentinel). Clicks while a batch is loading are ignored. Deliberately slower than the corpus's 200 ms reveal rule (spec section 4), hence the waits between clicks. A crawler that judges a click after a fixed 250 ms sees nothing new on the first click and stops; one that waits for the click's request and the DOM changes it brings recovers all four. Batches are one-way: guard_observable derived empirically: A6 PASSES under guard-removal."
     }
   ]
 }
