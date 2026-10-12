@@ -119,6 +119,7 @@ MEDIA_PATH = re.compile(r"\.(jpe?g|png|gif|webp|avif|svg|bmp|mp4|webm|mov|m4v|og
 # centre (after scrolling it into view, as a person would) records whether a real
 # pointer would have reached it, and if not, which element was on top.
 CLICK_STATE_JS = """(el) => !el.isConnected || !el.checkVisibility() ? 'not visible'
+  : !el.getBoundingClientRect().width || !el.getBoundingClientRect().height ? 'zero size'
   : el.matches('[disabled], [aria-disabled="true"]') ? 'disabled' : ''"""
 DISPATCH_CLICK_JS = """(el) => {
   let r = el.getBoundingClientRect();
