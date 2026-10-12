@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-zerosize-stream</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 32px 24px 96px; font: 16px/1.55 -apple-system, BlinkMacSystemFont,
+         "Segoe UI", Helvetica, Arial, sans-serif; color: #1b1b1f; background: #fbfbfd; }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .lede { margin: 0 0 20px; color: #55555f; }
+  .story { border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; padding: 14px 16px; }
+  .story + .story { margin-top: 12px; }
+  .story-reveal { display: inline-block; padding: 4px 10px; border: 1px solid #c9c9d4;
+                  border-radius: 6px; background: #f3f3f8; }
+  .story img { display: block; width: 120px; height: 80px; margin-top: 8px; background: #e4e4ee; }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-zerosize-stream</h1>
+  <p class="lede">
+    Like a React-Modal page: every click anywhere adds another empty portal element, with a
+    click listener and no size, ahead of the content. The three story controls below are
+    plain elements with click listeners. Open all three stories.
+  </p>
+  <div id="portals"></div>
+  <div class="story"><span class="story-reveal" data-idx="01">Open story one</span></div>
+  <div class="story"><span class="story-reveal" data-idx="02">Open story two</span></div>
+  <div class="story"><span class="story-reveal" data-idx="03">Open story three</span></div>
+</main>
+
+<script>
+  const MECH = 'click-zerosize';
+  const VARIANT = 'stream';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  // Fetch each sentinel at most once per page load: the guard is the first statement.
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  // An empty, zero-size element with a listener, added before the stories, as a modal
+  // library adds a portal root on each render.
+  const portals = document.getElementById('portals');
+  function addPortal() {
+    const div = document.createElement('div');
+    div.className = 'ReactModalPortal';
+    div.addEventListener('click', function () {});
+    portals.append(div);
+  }
+  addPortal();
+  addPortal();
+  document.addEventListener('click', addPortal, true);
+
+  document.querySelectorAll('.story-reveal').forEach(function (el) {
+    el.addEventListener('click', function () {
+      const img = fetchSentinel(el.dataset.idx);
+      if (img) {
+        img.alt = '';
+        el.parentElement.append(img);
+      }
+    });
+  });
+</script>
+</body>
+</html>

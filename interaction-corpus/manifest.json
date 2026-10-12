@@ -532,6 +532,37 @@
       "guard_observable": true,
       "viewport_min_height_px": 720,
       "notes": "Numbered pagination whose whole bar is rebuilt on every page change, so each button is a new node each time (as on BBC). Pages 2-4 each fetch one sentinel. A crawler that knows elements only by node identity keeps re-clicking the same page buttons; one that knows them by signature stops once revisiting reveals nothing. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "click-zerosize-stream",
+      "path": "pages/click/zerosize-stream.html",
+      "mechanism": "click",
+      "submechanism": "zerosize",
+      "variant": "stream",
+      "resource_sentinels": [
+        "/sentinel/click-zerosize/stream/01.png",
+        "/sentinel/click-zerosize/stream/02.png",
+        "/sentinel/click-zerosize/stream/03.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".story-reveal[data-idx='01']"
+        },
+        {
+          "type": "click",
+          "selector": ".story-reveal[data-idx='02']"
+        },
+        {
+          "type": "click",
+          "selector": ".story-reveal[data-idx='03']"
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Like React-Modal (gymshark): every click anywhere appends another empty, zero-size portal div with a click listener, ahead of three listener-only story controls. A crawler that clicks zero-size listener elements clicks portal after portal and never reaches the stories. guard_observable derived empirically: A6 FAILS under guard-removal."
     }
   ]
 }
