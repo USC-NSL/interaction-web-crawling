@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-loadmore-replaced</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 32px 24px 96px; font: 16px/1.55 -apple-system, BlinkMacSystemFont,
+         "Segoe UI", Helvetica, Arial, sans-serif; color: #1b1b1f; background: #fbfbfd; }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .lede { margin: 0 0 20px; color: #55555f; }
+  .results { list-style: none; margin: 0; padding: 0; }
+  .results li { display: flex; align-items: center; gap: 14px; padding: 10px 14px; margin-bottom: 8px;
+                border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; }
+  .results img { width: 72px; height: 48px; flex: none; background: #e4e4ee; border-radius: 4px; }
+  .loadmore-trigger { display: block; width: 100%; margin-top: 12px; padding: 10px; font: inherit;
+                      border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; cursor: pointer; }
+  .loadmore-trigger.is-exhausted { color: #8a8a95; cursor: default; }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-loadmore-replaced</h1>
+  <p class="lede">
+    A "Load more" list whose button is rebuilt after every batch: the button that loads the
+    next batch is a new element each time, with the same markup. Click "Load more" until
+    there are no more results (four batches).
+  </p>
+  <ul class="results" id="results"></ul>
+  <div id="more"></div>
+</main>
+
+<script>
+  const MECH = 'click-loadmore';
+  const VARIANT = 'replaced';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  // Fetch each sentinel at most once per page load: the guard is the first statement.
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  const BATCHES = ['01', '02', '03', '04'];
+  const results = document.getElementById('results');
+  const more = document.getElementById('more');
+  let loaded = 0;
+
+  // A new button node after each batch. Once exhausted it stays clickable as a no-op, so
+  // that repeating the action does nothing rather than fail.
+  function renderButton() {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'loadmore-trigger';
+    b.textContent = 'Load more';
+    if (loaded >= BATCHES.length) {
+      b.classList.add('is-exhausted');
+      b.textContent = 'No more results';
+    }
+    b.addEventListener('click', loadNext);
+    more.replaceChildren(b);
+  }
+
+  function loadNext() {
+    if (loaded >= BATCHES.length) return;
+    const idx = BATCHES[loaded];
+    loaded += 1;
+    const item = document.createElement('li');
+    const img = fetchSentinel(idx);
+    if (img) {
+      img.alt = '';
+      item.appendChild(img);
+    }
+    const text = document.createElement('div');
+    text.textContent = 'Batch ' + loaded + ' of ' + BATCHES.length + '.';
+    item.appendChild(text);
+    results.appendChild(item);
+    renderButton();
+  }
+
+  renderButton();
+</script>
+</body>
+</html>
