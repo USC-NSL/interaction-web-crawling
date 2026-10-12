@@ -97,7 +97,8 @@ PARKED = re.compile(r"domain (name )?(is|may be) for sale|buy this domain|this d
                     r"godaddy\.com/domainsearch|domain has expired|parkingcrew|bodis\.com", re.I)
 SKIP_PATH = re.compile(r"/(log-?in|log-?out|sign-?in|sign-?up|sign-?out|register|account|"
                        r"my-?account|profile|cart|basket|bag|checkout|wish-?list|search|auth|"
-                       r"password|subscribe|unsubscribe)(/|$|\.)", re.I)
+                       r"password|subscribe|unsubscribe|"
+                       r"recherche|suche|buscar|busca|ricerca|pesquisa|検索)(/|$|\.)", re.I)
 FILE_EXT = re.compile(r"\.(pdf|zip|gz|rar|7z|tar|jpe?g|png|gif|webp|svg|ico|mp[34]|mov|avi|"
                       r"wav|docx?|xlsx?|pptx?|csv|exe|dmg|apk|msi|iso|xml|rss|json|txt)$", re.I)
 ID_SEGMENT = re.compile(r"^(\d+|[0-9a-f]{8,}|[0-9a-f-]{20,}|.*\d{3,}.*)$", re.I)
@@ -128,7 +129,7 @@ def candidate_urls(urls: list[str], domain: str, home: str) -> "OrderedDict[str,
         if u.scheme not in ("http", "https") or not same_site(raw, domain):
             continue
         url = u._replace(fragment="").geturl()
-        path = u.path or "/"
+        path = urllib.parse.unquote(u.path) or "/"
         if (url.rstrip("/") == home_key or path in ("", "/") or SKIP_PATH.search(path)
                 or FILE_EXT.search(path)):
             continue
@@ -270,25 +271,51 @@ async def screen_domain(i: int, rank: int, domain: str, browser, sem, loads: Loa
                f"{info['text']} chars" if info["text"] < THIN_CHARS else "no same-site links")
         return {**rec, "kept": False, "reason": "parked or thin", "detail": why}
 
-    # internal pages: random homepage-link patterns, then the sitemap
+    rec["links"] = {p: urls[:20] for p, urls in links.items()}
+    return {**rec, **await pick_pages(domain, final, links, robots, loads, args, rng_seed)}
+
+
+async def pick_pages(domain: str, home: str, links: dict, robots: RobotsCache, loads: Loads,
+                     args, rng_seed: str) -> dict:
+    """Random homepage-link patterns, then the sitemap; pages robots.txt disallows are skipped."""
+    async def allowed(url: str) -> bool:
+        host = urllib.parse.urlsplit(url).netloc
+        if host not in robots._parsers:         # a host whose robots.txt is not cached yet
+            await loads.wait(host)
+            start = time.time()
+            res = await asyncio.to_thread(robots.check, url)
+            loads.done(host, f"https://{host}/robots.txt", "robots", start)
+            return res["allowed"]
+        return robots.check(url)["allowed"]
+
     rng = random.Random(f"{rng_seed}:{domain}")
-    pages, used = [], set()
-    pats = list(links)
-    rng.shuffle(pats)
-    for p in pats[:args.pages]:
-        pages.append({"url": rng.choice(links[p]), "source": "homepage links"})
-        used.add(p)
+    pages, used, skipped, note = [], set(), [], None
+
+    async def take(groups: dict, source: str) -> None:
+        pats = [p for p in groups if p not in used]
+        rng.shuffle(pats)
+        for p in pats:
+            if len(pages) >= args.pages:
+                return
+            url = rng.choice(groups[p])
+            used.add(p)
+            if await allowed(url):
+                pages.append({"url": url, "source": source})
+            else:
+                skipped.append(url)
+
+    await take(links, "homepage links")
     if len(pages) < args.pages:
-        found = await sitemap_pages(domain, final, robots, loads)
-        rec["sitemap"] = found["note"]
-        groups = candidate_urls(found["locs"], domain, final)
-        spats = [p for p in groups if p not in used]
-        rng.shuffle(spats)
-        for p in spats[:args.pages - len(pages)]:
-            pages.append({"url": rng.choice(groups[p]), "source": "sitemap.xml"})
-    rec.update(kept=True, pages=pages, link_patterns=len(links),
-               manual_search_needed=len(pages) < args.pages)
-    return rec
+        found = await sitemap_pages(domain, home, robots, loads)
+        note = found["note"]
+        await take(candidate_urls(found["locs"], domain, home), "sitemap.xml")
+    out = {"kept": True, "pages": pages, "link_patterns": len(links),
+           "manual_search_needed": len(pages) < args.pages}
+    if note:
+        out["sitemap"] = note
+    if skipped:
+        out["robots_skipped"] = skipped
+    return out
 
 
 async def sitemap_pages(domain: str, home: str, robots: RobotsCache, loads: Loads) -> dict:
@@ -372,7 +399,6 @@ async def main_async(args) -> int:
             print(f"  [{r['draw']:3}] {r['domain']:40} excluded: {category} "
                   f"(was {r.get('reason', 'kept')})", flush=True)
 
-
     def enough() -> bool:
         kept = 0
         for d in draw:
@@ -388,6 +414,29 @@ async def main_async(args) -> int:
         browser = await pw.chromium.launch(headless=True, channel="chromium", args=CRAWLER_ARGS,
                                            ignore_default_args=["--enable-automation",
                                                                 "--hide-scrollbars"])
+        # kept domains whose pages a newer path filter rejects: re-render the homepage
+        # (one load) and pick again, for those domains only
+        for r in [r for r in results.values() if r["kept"]]:
+            stale = [p for p in r["pages"] if SKIP_PATH.search(
+                urllib.parse.unquote(urllib.parse.urlsplit(p["url"]).path))]
+            if not stale:
+                continue
+            host = urllib.parse.urlsplit(r["homepage"]).netloc
+            await loads.wait(host)
+            start = time.time()
+            info = await render(browser, r["homepage"])
+            loads.done(host, r["homepage"], "homepage", start)
+            if "error" in info:
+                print(f"  [{r['draw']:3}] {r['domain']:40} re-pick failed: {info['error']}")
+                continue
+            links = candidate_urls(info["links"], r["domain"], info["final_url"])
+            picked = await pick_pages(r["domain"], info["final_url"], links, robots, loads, args,
+                                      str(args.seed))
+            record({**r, **picked, "links": {p: u[:20] for p, u in links.items()},
+                    "repicked": [p["url"] for p in stale]})
+            print(f"  [{r['draw']:3}] {r['domain']:40} re-picked: {len(stale)} search page(s) replaced",
+                  flush=True)
+
         queue = [d for d in draw if d["draw"] not in results]
         active: set[asyncio.Task] = set()
         if enough():
@@ -421,6 +470,15 @@ async def main_async(args) -> int:
 def write_outputs(out: Path, draw: list[dict], results: dict[int, dict], args) -> None:
     screened = [results[d["draw"]] for d in draw if d["draw"] in results]
     kept = [r for r in screened if r["kept"]][:args.keep]
+    # pages a person found with a site: search, kept in their own file so a re-run never
+    # overwrites them: {"domain": ["https://...", ...]}
+    manual_path = out / "manual_pages.json"
+    manual_pages = json.loads(manual_path.read_text()) if manual_path.exists() else {}
+    for r in kept:
+        have = {p["url"] for p in r["pages"]}
+        r["pages"] = r["pages"] + [{"url": u, "source": "manual site: search"}
+                                   for u in manual_pages.get(r["domain"], []) if u not in have]
+        r["manual_search_needed"] = len(r["pages"]) < args.pages
     sample = {"list_id": args.list_id, "seed": args.seed, "pages_per_domain": args.pages,
               "domains": [{k: r[k] for k in ("draw", "rank", "domain", "homepage", "pages")}
                           for r in kept]}
@@ -433,9 +491,11 @@ def write_outputs(out: Path, draw: list[dict], results: dict[int, dict], args) -
             pages.append({"id": f"{slug}-{k}", "url": p["url"], "source": p["source"]})
     (out / "pages.json").write_text(json.dumps({"pages": pages}, indent=2) + "\n")
     manual = [r for r in kept if r["manual_search_needed"]]
+    if not manual_path.exists():
+        manual_path.write_text(json.dumps({r["domain"]: [] for r in manual}, indent=2) + "\n")
     (out / "manual_search.txt").write_text(
         "# Kept domains with fewer than %d internal pages from homepage links and sitemap.xml.\n"
-        "# Run a site: search by hand for each, and add pages to sample.json. Not automated.\n"
+        "# Run a site: search by hand for each, and put the URLs in manual_pages.json. Not automated.\n"
         % args.pages + "".join(f"{r['domain']}\t{len(r['pages'])} found\tsite:{r['domain']}\n"
                                for r in manual))
     reasons = Counter(r["reason"] for r in screened if not r["kept"])
@@ -454,7 +514,9 @@ def write_outputs(out: Path, draw: list[dict], results: dict[int, dict], args) -
              "after it):"] + [f"- {name}: `{rule.pattern}`" for name, rule in CATEGORIES] + [
              "", "Excluded after screening (were survivors): "
              + (", ".join(f"{r['domain']} ({r['reason']})" for r in excluded) or "none"),
-             "Replaced by the next survivors in draw order: " + (", ".join(replaced_by) or "none")]
+             "Replaced by the next survivors in draw order: " + (", ".join(replaced_by) or "none"),
+             "Re-picked for the search-page filter: "
+             + (", ".join(r["domain"] for r in kept if r.get("repicked")) or "none")]
     (out / "summary.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines), flush=True)
 
