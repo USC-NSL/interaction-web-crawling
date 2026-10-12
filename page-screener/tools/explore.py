@@ -249,6 +249,49 @@ NON_NETWORK_SCHEMES = ("data:", "blob:", "about:", "chrome:", "chrome-extension:
 
 # --- in-page scripts ----------------------------------------------------------
 
+# An element's signature, so a re-rendered control is known again: its path from the
+# nearest ancestor with a stable id (ids that look generated per render are skipped),
+# as tag:nth-of-type steps, plus role, name and attributes that stay the same across
+# renders. The same recipe as RevealClick's.
+SIGNATURE_JS = r"""
+  const GENERATED_ID = /\d{3,}|:|[0-9a-f]{8}|^(ember|react|rc|mui|radix|headlessui|ng)[-_]/i;
+  const sigName = (el) => (
+    el.getAttribute('aria-label') || el.getAttribute('title') ||
+    el.getAttribute('alt') || (el.tagName === 'INPUT' ? (el.value || '') : '') ||
+    (el.innerText || el.textContent || '')
+  ).replace(/\s+/g, ' ').trim().slice(0, 100);
+  const signature = (el) => {
+    const path = [];
+    for (let e = el; e && e.nodeType === 1 && e !== document.body; e = e.parentElement) {
+      if (e.id && !GENERATED_ID.test(e.id)) { path.unshift('#' + e.id); break; }
+      const tag = e.tagName;
+      const same = e.parentElement
+        ? Array.prototype.filter.call(e.parentElement.children, (c) => c.tagName === tag) : [e];
+      path.unshift(tag.toLowerCase() + ':' + (same.indexOf(e) + 1));
+    }
+    return [path.join('>'), el.getAttribute('role') || '', sigName(el),
+            ...['type', 'href', 'name', 'title', 'data-testid'].map((a) => el.getAttribute(a) || '')
+           ].join('|');
+  };
+"""
+
+# The visible element that now carries a signature (a control rebuilt after a click).
+FIND_BY_SIGNATURE_JS = r"""
+([sig, tag]) => {
+""" + SIGNATURE_JS + r"""
+  for (const el of document.querySelectorAll(tag)) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height || !el.checkVisibility() || signature(el) !== sig) continue;
+    if (!el.hasAttribute('data-explore-id')) {
+      window.__exploreSeq += 1;
+      el.setAttribute('data-explore-id', window.__explorePrefix + '-' + window.__exploreSeq);
+    }
+    return el.getAttribute('data-explore-id');
+  }
+  return null;
+}
+"""
+
 # Candidate discovery. Walks the document and every open shadow root, keeps visible
 # elements from any of the three sources (native control, CDP listener mark,
 # cursor:pointer), and gives each a stable id that survives later passes.
@@ -256,6 +299,7 @@ DISCOVER_JS = r"""
 ({prefix, clickSel, hoverSel, delegationRoots, pointer}) => {
   if (!window.__explorePrefix) { window.__explorePrefix = prefix; window.__exploreSeq = 0; }
   const P = window.__explorePrefix;
+""" + SIGNATURE_JS + r"""
   const acc = (el) => (
     el.getAttribute('aria-label') || el.getAttribute('title') ||
     el.getAttribute('alt') || (el.tagName === 'INPUT' ? (el.value || '') : '') ||
@@ -340,6 +384,7 @@ DISCOVER_JS = r"""
                            anchor.href.split('#')[0] !== location.href.split('#')[0]);
       out.push({
         id: el.getAttribute('data-explore-id'),
+        sig: signature(el),
         tag: el.tagName.toLowerCase(),
         selector: cssPath(el),
         name: acc(el),
@@ -541,6 +586,8 @@ class Explorer:
         self.discovery_passes: list[dict] = []
         self.processed_hover: set[str] = set()
         self.processed_click: set[str] = set()
+        # per signature: clicks so far and whether the last one revealed something
+        self.sig_state: dict[str, dict] = {}
         self.processed_scroll: set[str] = set()
         self.click_candidates_seen: dict[str, list] = {}
         # Requests the page makes on its own, on a timer, while nobody touches it:
@@ -1182,7 +1229,8 @@ class Explorer:
     # ---- click ----------------------------------------------------------------
 
     def click_element(self, frame, cand: dict, pass_no: int) -> None:
-        """Click repeatedly until a click produces no novel content, or 10 clicks.
+        """Click repeatedly until a click produces no novel content, or 10 clicks on
+        this element's signature, counted across re-renders.
 
         Novel = a content request URL, or a visible text fragment, not seen earlier in
         this session. A wrapping carousel changes the DOM on every click forever; it
@@ -1190,13 +1238,30 @@ class Explorer:
         never a reveal, and ends this element.
         """
         locator = frame.locator(f"[data-explore-id='{cand['id']}']").first
-        for n in range(1, self.opts.max_clicks_per_element + 1):
+        # recorded only once a click happens, so a node that was already gone does not
+        # mark its signature as seen
+        seen = self.sig_state.get(cand["sig"], {"clicks": 0, "novel": False})
+        n = 0
+        while seen["clicks"] < self.opts.max_clicks_per_element:
+            n += 1
             if self.caps_reached():
                 return
             try:
                 state = locator.evaluate(CLICK_STATE_JS, timeout=CLICK_TIMEOUT_MS)
             except Exception as exc:  # noqa: BLE001
                 state = f"gone ({type(exc).__name__})"
+            if state.startswith("gone") and seen["novel"] and n > 1:
+                # a control rebuilt after a click that revealed something (a load-more
+                # replaced after each batch): carry on with the new node
+                try:
+                    new_id = frame.evaluate(FIND_BY_SIGNATURE_JS, [cand["sig"], cand["tag"]])
+                except Exception:  # noqa: BLE001
+                    new_id = None
+                if new_id and new_id not in self.processed_click:
+                    self.processed_click.add(new_id)
+                    locator = frame.locator(f"[data-explore-id='{new_id}']").first
+                    n -= 1
+                    continue
             if state:
                 if n == 1:
                     self.skipped_clicks.append({"target": cand["selector"], "name": own_name_of(cand),
@@ -1215,6 +1280,9 @@ class Explorer:
                     self.unclickable.append({"target": cand["selector"], "name": own_name_of(cand),
                                              "reason": act["outcome"]})
                 return
+            self.sig_state[cand["sig"]] = seen
+            seen["clicks"] += 1
+            seen["novel"] = False
             self.settle()
             if self.check_navigation(act, route):
                 act["outcome"] = ("route change; not a reveal" if act["id"] in self.route_change_actions
@@ -1229,6 +1297,7 @@ class Explorer:
             act["new_requests"] = novel_req
             if novel_text or novel_req:
                 act["outcome"] = "novel"
+                seen["novel"] = True
                 continue
             act["outcome"] = "not novel; element done"
             # A toggle's second click collapses what its first click revealed, which
@@ -1408,6 +1477,12 @@ class Explorer:
                     if self.caps_reached():
                         break
                     self.processed_click.add(cand["id"])
+                    seen = self.sig_state.get(cand["sig"])
+                    if seen and not (seen["novel"] and seen["clicks"] < self.opts.max_clicks_per_element):
+                        # the same control under a new node, and clicking it stopped revealing
+                        self.skipped_clicks.append({"target": cand["selector"], "name": own_name_of(cand),
+                                                    "reason": "seen"})
+                        continue
                     if self.veto(cand):
                         continue
                     self.click_element(frame, cand, pass_no)
