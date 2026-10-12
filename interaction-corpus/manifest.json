@@ -588,6 +588,42 @@
       "guard_observable": false,
       "viewport_min_height_px": 720,
       "notes": "Load more whose button is rebuilt as a new node with the same markup after every batch; four batches, one sentinel each. A crawler that skips a re-rendered control it has seen must still continue while the control keeps revealing. Batches are one-way, so repeating the action cannot fetch a sentinel twice: guard_observable derived empirically: A6 PASSES under guard-removal."
+    },
+    {
+      "id": "click-expanders-identical",
+      "path": "pages/click/expanders-identical.html",
+      "mechanism": "click",
+      "submechanism": "expanders",
+      "variant": "identical",
+      "resource_sentinels": [
+        "/sentinel/click-expanders/identical/01.png",
+        "/sentinel/click-expanders/identical/02.png",
+        "/sentinel/click-expanders/identical/03.png",
+        "/sentinel/click-expanders/identical/04.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".card:nth-of-type(1) .expander"
+        },
+        {
+          "type": "click",
+          "selector": ".card:nth-of-type(2) .expander"
+        },
+        {
+          "type": "click",
+          "selector": ".card:nth-of-type(3) .expander"
+        },
+        {
+          "type": "click",
+          "selector": ".card:nth-of-type(4) .expander"
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Four identical 'Read more' buttons (same text and attributes) in four cards, each revealing a different sentinel. A signature without the element's position collapses them to one and clicks only the first. guard_observable derived empirically: A6 FAILS under guard-removal."
     }
   ]
 }

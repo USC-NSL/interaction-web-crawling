@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>click-expanders-identical</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 32px 24px 96px; font: 16px/1.55 -apple-system, BlinkMacSystemFont,
+         "Segoe UI", Helvetica, Arial, sans-serif; color: #1b1b1f; background: #fbfbfd; }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .lede { margin: 0 0 20px; color: #55555f; }
+  .card { border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; padding: 14px 16px; }
+  .card + .card { margin-top: 12px; }
+  .expander { font: inherit; padding: 4px 10px; border: 1px solid #c9c9d4; border-radius: 6px;
+              background: #f3f3f8; cursor: pointer; }
+  .panel[hidden] { display: none; }
+  .panel img { display: block; width: 120px; height: 80px; margin-top: 8px; background: #e4e4ee; }
+</style>
+</head>
+<body>
+<main>
+  <h1>click-expanders-identical</h1>
+  <p class="lede">
+    Four cards, each with a "Read more" button. The buttons are identical (same text, same
+    attributes); only their place on the page differs, and each reveals a different
+    panel. Open all four.
+  </p>
+  <div class="card"><p>The harbour at dusk.</p><button type="button" class="expander">Read more</button><div class="panel" hidden></div></div>
+  <div class="card"><p>A ridge line in winter.</p><button type="button" class="expander">Read more</button><div class="panel" hidden></div></div>
+  <div class="card"><p>The market street.</p><button type="button" class="expander">Read more</button><div class="panel" hidden></div></div>
+  <div class="card"><p>An orchard in spring.</p><button type="button" class="expander">Read more</button><div class="panel" hidden></div></div>
+</main>
+
+<script>
+  const MECH = 'click-expanders';
+  const VARIANT = 'identical';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  // Fetch each sentinel at most once per page load: the guard is the first statement.
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  // The index comes from the card's position, not from anything on the button.
+  document.querySelectorAll('.card').forEach(function (card, i) {
+    const button = card.querySelector('.expander');
+    const panel = card.querySelector('.panel');
+    button.addEventListener('click', function () {
+      panel.hidden = false;
+      const img = fetchSentinel('0' + (i + 1));
+      if (img) {
+        img.alt = '';
+        panel.append(img);
+      }
+    });
+  });
+</script>
+</body>
+</html>
