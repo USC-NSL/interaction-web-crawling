@@ -72,6 +72,12 @@ LISTENER_SCAN_LIMIT = 20000       # elements whose listeners are read per discov
 SETTLE_MIN_MS = 600               # after a click, before looking for novelty
 SETTLE_QUIET_MS = 500             # ... then until no request has been in flight this long
 SETTLE_MAX_MS = 5000
+# After a click, as RevealClick waits: at least CLICK_MIN_WAIT_MS, then while a fetch/XHR
+# the click started is in flight or the DOM changed within CLICK_QUIET_MS, up to
+# CLICK_MAX_WAIT_MS. Other waits (scroll, hover, route restores) keep settle().
+CLICK_MIN_WAIT_MS = 250
+CLICK_QUIET_MS = 250
+CLICK_MAX_WAIT_MS = 2500
 RESTORE_LOSS_RATIO = 2.0          # see click_element: undoing a collapsing click
 TEXT_FRAGMENT_LOG_LIMIT = 2000
 # Per-phase budgets: shares of --max-actions and --max-seconds, so no phase can spend
@@ -114,6 +120,17 @@ CONSENT_WORDS = re.compile(r"\b(cookies?|consent)\b", re.IGNORECASE)
 # A link to another document with a click listener is clicked only if it points at an
 # image or video (a lightbox). Other listener links are mostly client-side router links.
 MEDIA_PATH = re.compile(r"\.(jpe?g|png|gif|webp|avif|svg|bmp|mp4|webm|mov|m4v|ogv)$", re.IGNORECASE)
+# The time of the last DOM change in a frame; the first call installs the observer.
+LAST_MUTATION_JS = """() => {
+  if (!window.__exploreMut) {
+    window.__exploreMut = {t: 0};
+    new MutationObserver(() => { window.__exploreMut.t = Date.now(); })
+      .observe(document.documentElement,
+               {subtree: true, childList: true, attributes: true, characterData: true});
+  }
+  return window.__exploreMut.t;
+}"""
+
 # Stream segments and manifests keep arriving while a player runs: they say nothing
 # about whether a click revealed something, so they never make a click novel.
 MEDIA_SEGMENT = re.compile(r"\.(m3u8|mpd|ts|m4s|m4a|m4v|mp4|webm|aac|vtt|cmfv|cmfa)$", re.IGNORECASE)
@@ -572,6 +589,7 @@ class Explorer:
         # norm url -> {first_action, raw, resource_type, t}
         self.requests: dict[str, dict] = {}
         self.inflight: set = set()
+        self.request_started: dict = {}      # in-flight request -> start time
         self.last_net_activity = time.time()
         self.actions: list[dict] = []
         self.current = 0                       # action id; 0 is the baseline
@@ -631,6 +649,7 @@ class Explorer:
 
     def _on_request(self, request) -> None:
         self.inflight.add(request)
+        self.request_started[request] = time.time()
         self.last_net_activity = time.time()
         url = request.url
         if not is_network_url(url):
@@ -691,6 +710,7 @@ class Explorer:
 
     def _on_request_done(self, request) -> None:
         self.inflight.discard(request)
+        self.request_started.pop(request, None)
         self.last_net_activity = time.time()
 
     @staticmethod
@@ -852,6 +872,27 @@ class Explorer:
             if not self.inflight and quiet >= SETTLE_QUIET_MS:
                 return
             self.page.wait_for_timeout(100)
+
+    def last_mutation(self) -> float:
+        """The latest DOM change, in epoch seconds, across same-origin frames."""
+        latest = 0.0
+        for frame in self._frames():
+            try:
+                latest = max(latest, frame.evaluate(LAST_MUTATION_JS) / 1000)
+            except Exception:  # noqa: BLE001 - frame detached mid-call
+                continue
+        return latest
+
+    def click_wait(self, clicked: float) -> int:
+        """Wait after a click as RevealClick does; returns the ms waited."""
+        self.page.wait_for_timeout(CLICK_MIN_WAIT_MS)
+        while (time.time() - clicked) * 1000 < CLICK_MAX_WAIT_MS:
+            busy = any(r.resource_type in ("fetch", "xhr") and t >= clicked
+                       for r, t in list(self.request_started.items()))
+            if not busy and (time.time() - self.last_mutation()) * 1000 >= CLICK_QUIET_MS:
+                break
+            self.page.wait_for_timeout(50)
+        return round((time.time() - clicked) * 1000)
 
     def visible_lines(self) -> set[str]:
         """Visible text fragments (innerText lines) of the page and same-origin frames."""
@@ -1278,6 +1319,8 @@ class Explorer:
             act = self.begin("click", cand["selector"], n, element=cand["id"],
                              name=cand["name"][:80], via=cand["via"], sources=cand["sources"], frame=cand["frame"],
                              **{"pass": pass_no})
+            self.last_mutation()    # the observer must exist before the click
+            clicked = time.time()
             try:
                 act.update(locator.evaluate(DISPATCH_CLICK_JS, timeout=CLICK_TIMEOUT_MS))
             except Exception as exc:  # noqa: BLE001
@@ -1289,7 +1332,7 @@ class Explorer:
             self.sig_state[cand["sig"]] = seen
             seen["clicks"] += 1
             seen["novel"] = False
-            self.settle()
+            act["wait_ms"] = self.click_wait(clicked)
             if self.check_navigation(act, route):
                 act["outcome"] = ("route change; not a reveal" if act["id"] in self.route_change_actions
                                   else "navigated (blocked or reverted); not a reveal")
@@ -1318,8 +1361,9 @@ class Explorer:
                                   name=cand["name"][:80], via=cand["via"], sources=cand["sources"], frame=cand["frame"],
                                   restore=True, **{"pass": pass_no})
                 try:
+                    clicked = time.time()
                     rest.update(locator.evaluate(DISPATCH_CLICK_JS, timeout=CLICK_TIMEOUT_MS))
-                    self.settle()
+                    rest["wait_ms"] = self.click_wait(clicked)
                     if not self.check_navigation(rest, route):
                         restored = self.visible_lines()
                         rest["outcome"] = ("restored" if (before - after) <= restored
