@@ -5,6 +5,9 @@ Serves the corpus root, so pages live under /pages/... and sentinel assets under
 /sentinel/.... Every request whose path starts with /sentinel/ is appended to the
 request log as one JSON object per line, whether or not the asset exists. That
 log is what makes the acceptance tests runnable without Docker or WARC parsing.
+
+A GET or HEAD with a delay=<ms> query parameter is answered after that many
+milliseconds (at most 5000), for pages whose data arrives late, as on a real server.
 """
 
 import argparse
@@ -17,10 +20,11 @@ import time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SENTINEL_PREFIX = "/sentinel/"
+MAX_DELAY_MS = 5000
 
 
 class RequestLog:
@@ -74,7 +78,13 @@ class CorpusHandler(SimpleHTTPRequestHandler):
     def _log_sentinel(self) -> None:
         self.request_log.append(urlsplit(self.path).path, self.headers.get("Referer", ""))
 
+    def _delay(self) -> None:
+        values = parse_qs(urlsplit(self.path).query).get("delay")
+        if values and values[0].isdigit():
+            time.sleep(min(int(values[0]), MAX_DELAY_MS) / 1000)
+
     def do_GET(self):
+        self._delay()
         if self._is_sentinel():
             self._log_sentinel()
             if not self._sentinel_exists():
@@ -83,6 +93,7 @@ class CorpusHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_HEAD(self):
+        self._delay()
         if self._is_sentinel():
             self._log_sentinel()
             if not self._sentinel_exists():
