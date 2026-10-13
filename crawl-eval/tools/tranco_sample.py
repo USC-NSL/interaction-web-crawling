@@ -98,7 +98,16 @@ PARKED = re.compile(r"domain (name )?(is|may be) for sale|buy this domain|this d
 SKIP_PATH = re.compile(r"/(log-?in|log-?out|sign-?in|sign-?up|sign-?out|register|account|"
                        r"my-?account|profile|cart|basket|bag|checkout|wish-?list|search|auth|"
                        r"password|subscribe|unsubscribe|"
-                       r"recherche|suche|buscar|busca|ricerca|pesquisa|検索)(/|$|\.)", re.I)
+                       r"recherche|suche|buscar|busca|ricerca|pesquisa|検索|my-?page)(/|$|\.)", re.I)
+# transactional hosts: cart., checkout., order(s)., account(s)., login., my..., secure...
+SKIP_HOST = re.compile(r"^(cart|checkout|order|account|login|my|secure)", re.I)
+
+
+def rejected(url: str) -> bool:
+    """A page the sample never uses: a login, account, cart or search page, by path or host."""
+    u = urllib.parse.urlsplit(url)
+    return bool(SKIP_PATH.search(urllib.parse.unquote(u.path) or "/")
+                or SKIP_HOST.match((u.hostname or "").split(".")[0]))
 FILE_EXT = re.compile(r"\.(pdf|zip|gz|rar|7z|tar|jpe?g|png|gif|webp|svg|ico|mp[34]|mov|avi|"
                       r"wav|docx?|xlsx?|pptx?|csv|exe|dmg|apk|msi|iso|xml|rss|json|txt)$", re.I)
 ID_SEGMENT = re.compile(r"^(\d+|[0-9a-f]{8,}|[0-9a-f-]{20,}|.*\d{3,}.*)$", re.I)
@@ -130,7 +139,7 @@ def candidate_urls(urls: list[str], domain: str, home: str) -> "OrderedDict[str,
             continue
         url = u._replace(fragment="").geturl()
         path = urllib.parse.unquote(u.path) or "/"
-        if (url.rstrip("/") == home_key or path in ("", "/") or SKIP_PATH.search(path)
+        if (url.rstrip("/") == home_key or path in ("", "/") or rejected(url)
                 or FILE_EXT.search(path)):
             continue
         groups.setdefault(pattern(url), [])
@@ -416,9 +425,14 @@ async def main_async(args) -> int:
                                                                 "--hide-scrollbars"])
         # kept domains whose pages a newer path filter rejects: re-render the homepage
         # (one load) and pick again, for those domains only
+        def disallowed(url: str) -> bool:
+            # only where robots.txt is already cached: checking costs no load
+            host = urllib.parse.urlsplit(url).netloc
+            cached = (SCREENER / "cache" / "robots" / f"{re.sub(r'[^A-Za-z0-9.-]', '_', host)}.txt")
+            return cached.exists() and not robots.check(url)["allowed"]
+
         for r in [r for r in results.values() if r["kept"]]:
-            stale = [p for p in r["pages"] if SKIP_PATH.search(
-                urllib.parse.unquote(urllib.parse.urlsplit(p["url"]).path))]
+            stale = [p for p in r["pages"] if rejected(p["url"]) or disallowed(p["url"])]
             if not stale:
                 continue
             host = urllib.parse.urlsplit(r["homepage"]).netloc
@@ -434,8 +448,8 @@ async def main_async(args) -> int:
                                       str(args.seed))
             record({**r, **picked, "links": {p: u[:20] for p, u in links.items()},
                     "repicked": [p["url"] for p in stale]})
-            print(f"  [{r['draw']:3}] {r['domain']:40} re-picked: {len(stale)} search page(s) replaced",
-                  flush=True)
+            print(f"  [{r['draw']:3}] {r['domain']:40} re-picked: {len(stale)} page(s) replaced "
+                  f"({', '.join(p['url'] for p in stale)[:120]})", flush=True)
 
         queue = [d for d in draw if d["draw"] not in results]
         active: set[asyncio.Task] = set()
@@ -515,7 +529,7 @@ def write_outputs(out: Path, draw: list[dict], results: dict[int, dict], args) -
              "", "Excluded after screening (were survivors): "
              + (", ".join(f"{r['domain']} ({r['reason']})" for r in excluded) or "none"),
              "Replaced by the next survivors in draw order: " + (", ".join(replaced_by) or "none"),
-             "Re-picked for the search-page filter: "
+             "Re-picked (page filter or robots.txt): "
              + (", ".join(r["domain"] for r in kept if r.get("repicked")) or "none")]
     (out / "summary.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines), flush=True)
