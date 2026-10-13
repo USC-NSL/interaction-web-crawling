@@ -44,6 +44,14 @@ SEARCH = re.compile(r"search|algolia|docsearch|lunr|pagefind|typesense|meilisear
 CONSENT = re.compile(r"cookieyes|onetrust|cookiebot|consent|didomi|trustarc|usercentrics", re.I)
 WIDGET_HOSTS = re.compile(r"(^|\.)(googleapis\.com|maps\.gstatic\.com|youtube\.com|"
                           r"ytimg\.com|vimeo\.com|player\.vimeo\.com|twitter\.com|x\.com)$", re.I)
+# Map tiles: an interactive map fetches them as it is panned or zoomed. A map widget at
+# work, not content the page reveals.
+MAP_TILE_HOST = re.compile(r"(^|\.)(tiles?\d*\.[\w.-]+|tile\.openstreetmap\.org|tile\.osm\.org|"
+                           r"api\.mapbox\.com|tiles\.mapbox\.com|[\w-]*arcgisonline\.com|"
+                           r"tiles\.arcgis\.com|basemaps\.arcgis\.com|mt\d?\.google\.com|"
+                           r"khms?\d?\.google\.com|maps\.googleapis\.com|maps\.gstatic\.com)$", re.I)
+MAP_TILE_PATH = re.compile(r"/\d{1,2}/\d+/\d+(@\dx)?\.(png|jpe?g|pbf|webp|mvt)$|/tile/\d{1,2}/\d+/\d+$|"
+                           r"/maps/vt\b|/vt/?$|/vt\?", re.I)
 ROUTE_CHUNK = re.compile(r"component---|\.md\.[\w-]+\.js$|/chunks/pages/|/chunks/app/", re.I)
 
 
@@ -99,6 +107,8 @@ def classify(u: str, g: dict, page_url: str, noise: set[str], meta: dict) -> tup
     if host == page.netloc and action == "hover" and on_link and rtype in ("fetch", "xhr") \
             and "json" in ctype:
         return "speculative", "S5 same-site data loaded by hovering a link"
+    if MAP_TILE_HOST.search(host) or MAP_TILE_PATH.search(parts.path):
+        return "functional", "F6 map tile (tile server or /z/x/y path)"
     if ctype.startswith(("video/", "audio/")) or "mpegurl" in ctype or "dash+xml" in ctype \
             or rtype == "media" or MEDIA_EXT.search(urllib.parse.urlsplit(u).path):
         return "media", "M1 media type, segment or manifest"
