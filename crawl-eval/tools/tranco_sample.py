@@ -36,7 +36,8 @@ parallel_explore.py reads, so the gap also holds for the exploration that follow
 
 Writes, in --out: list-<id>.csv, draw.json, screening.jsonl, sample.json (the kept
 domains with their pages and sources), pages.json (input for parallel_explore.py),
-manual_search.txt, summary.md.
+manual_search.txt, summary.md. Reads manual_pages.json (pages from a site: search by a
+person) and domain_notes.json (notes by hand, printed in summary.md) when present.
 """
 
 import argparse
@@ -551,6 +552,11 @@ def write_outputs(out: Path, draw: list[dict], results: dict[int, dict], args) -
              "Replaced by the next survivors in draw order: " + (", ".join(replaced_by) or "none"),
              "Re-picked (page filter or robots.txt): "
              + (", ".join(r["domain"] for r in kept if r.get("repicked")) or "none")]
+    # notes kept by hand, per domain (why a domain has fewer pages, for instance)
+    notes_path = out / "domain_notes.json"
+    notes = json.loads(notes_path.read_text()) if notes_path.exists() else {}
+    if notes:
+        lines += ["", "Domain notes:"] + [f"- {d}: {n}" for d, n in notes.items()]
     (out / "summary.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines), flush=True)
 
