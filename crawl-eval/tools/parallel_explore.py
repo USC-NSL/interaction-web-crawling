@@ -12,6 +12,10 @@ from every run directory's jobs.jsonl at start, as eval_run.py does, so a host l
 another run is respected too. Pages are taken round-robin across hosts, so one site's
 pages do not queue up behind each other.
 
+Reuse: with --reuse DIR, a page whose exact URL was already explored there (a done.json
+with exit code 0) gets a copy of that result instead of a new run, and the copy is listed
+in <out>/reused.json. Only valid while the explorer has not changed in between.
+
 Resumable: a page whose explorer/done.json exists is skipped, so an interrupted run is
 continued by running the same command again. On Ctrl-C the running explorers are stopped
 and their pages get no done.json, so they run again on resume. Every finished job is appended to
@@ -21,6 +25,7 @@ and their pages get no done.json, so they run again on resume. Every finished jo
 import argparse
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -94,18 +99,55 @@ class Scheduler:
             self.cond.notify_all()
 
 
+def reuse(pages: list[dict], out: Path, dirs: list[Path], dry_run: bool) -> list[dict]:
+    """Copy completed explorer results for the same URL from earlier run directories."""
+    done: dict[str, Path] = {}
+    for d in dirs:
+        for cmd_file in sorted(d.resolve().glob("*/explorer/command.json")):
+            job = cmd_file.parent
+            cmd = json.loads(cmd_file.read_text())
+            url = cmd[cmd.index("--url") + 1]
+            status = job / "done.json"
+            if status.exists() and json.loads(status.read_text()).get("exit_code") == 0:
+                done.setdefault(url, job)
+    reused = []
+    for p in pages:
+        target = out / p["id"] / "explorer"
+        src = done.get(p["url"])
+        if src is None or (target / "done.json").exists():
+            continue
+        reused.append({"id": p["id"], "url": p["url"], "from": str(src)})
+        if not dry_run:
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(src, target)
+    if reused and not dry_run:
+        out.mkdir(parents=True, exist_ok=True)
+        log = out / "reused.json"
+        old = json.loads(log.read_text()) if log.exists() else []
+        log.write_text(json.dumps(old + reused, indent=2) + "\n")
+    return reused
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--pages", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--min-host-gap", type=float, default=MIN_HOST_GAP)
+    ap.add_argument("--reuse", type=Path, action="append", default=[],
+                    help="a run directory whose completed results are reused for the same URL")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
     out = args.out.resolve()
     pages = json.loads(args.pages.read_text())["pages"]
-    todo = [p for p in round_robin(pages) if not (out / p["id"] / "explorer" / "done.json").exists()]
+    reused = reuse(pages, out, args.reuse, args.dry_run)
+    if reused:
+        print(f"{len(reused)} page(s) reused from {', '.join(map(str, args.reuse))}", flush=True)
+    reused_ids = {r["id"] for r in reused}
+    todo = [p for p in round_robin(pages) if p["id"] not in reused_ids
+            and not (out / p["id"] / "explorer" / "done.json").exists()]
     print(f"{len(pages)} page(s), {len(todo)} to run, {args.workers} worker(s), "
           f"{args.min_host_gap:.0f}s per host", flush=True)
     if args.dry_run:
