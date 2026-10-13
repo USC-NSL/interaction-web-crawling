@@ -79,6 +79,8 @@ ADULT = re.compile(r"(^|[^a-z])(porn|xxx|sex|adult|nsfw|escort|hentai|nude|camgi
                    r"onlyfans|erotic|fetish|milf|xvideos|xnxx|redtube|brazzers)", re.I)
 CATEGORIES = [("adult content", ADULT), ("gambling or betting", GAMBLING),
               ("piracy-adjacent", PIRACY)]
+# applied, but not yet confirmed by the study's advisor
+PENDING = {"piracy-adjacent": " (pending the advisor's confirmation)"}
 
 
 def excluded_category(text: str) -> str | None:
@@ -542,7 +544,8 @@ def write_outputs(out: Path, draw: list[dict], results: dict[int, dict], args) -
              "", f"Internal pages: {dict(by_source)}; domains needing a manual site: search: "
              f"{len(manual)}", "",
              "Exclusion rule (whole draw, domain name before any load, title and description "
-             "after it):"] + [f"- {name}: `{rule.pattern}`" for name, rule in CATEGORIES] + [
+             "after it):"] + [f"- {name}{PENDING.get(name, '')}: `{rule.pattern}`"
+                              for name, rule in CATEGORIES] + [
              "", "Excluded after screening (were survivors): "
              + (", ".join(f"{r['domain']} ({r['reason']})" for r in excluded) or "none"),
              "Replaced by the next survivors in draw order: " + (", ".join(replaced_by) or "none"),
