@@ -284,18 +284,22 @@ async def screen_domain(i: int, rank: int, domain: str, browser, sem, loads: Loa
     return {**rec, **await pick_pages(domain, final, links, robots, loads, args, rng_seed)}
 
 
+async def robots_allowed(url: str, robots: RobotsCache, loads: Loads) -> bool:
+    host = urllib.parse.urlsplit(url).netloc
+    if host not in robots._parsers:         # a host whose robots.txt is not loaded yet
+        await loads.wait(host)
+        start = time.time()
+        res = await asyncio.to_thread(robots.check, url)
+        loads.done(host, f"https://{host}/robots.txt", "robots", start)
+        return res["allowed"]
+    return robots.check(url)["allowed"]
+
+
 async def pick_pages(domain: str, home: str, links: dict, robots: RobotsCache, loads: Loads,
                      args, rng_seed: str) -> dict:
     """Random homepage-link patterns, then the sitemap; pages robots.txt disallows are skipped."""
     async def allowed(url: str) -> bool:
-        host = urllib.parse.urlsplit(url).netloc
-        if host not in robots._parsers:         # a host whose robots.txt is not cached yet
-            await loads.wait(host)
-            start = time.time()
-            res = await asyncio.to_thread(robots.check, url)
-            loads.done(host, f"https://{host}/robots.txt", "robots", start)
-            return res["allowed"]
-        return robots.check(url)["allowed"]
+        return await robots_allowed(url, robots, loads)
 
     rng = random.Random(f"{rng_seed}:{domain}")
     pages, used, skipped, note = [], set(), [], None
@@ -451,6 +455,15 @@ async def main_async(args) -> int:
             print(f"  [{r['draw']:3}] {r['domain']:40} re-picked: {len(stale)} page(s) replaced "
                   f"({', '.join(p['url'] for p in stale)[:120]})", flush=True)
 
+        # pages added by hand from a site: search are checked against robots.txt too
+        manual_path = out / "manual_pages.json"
+        manual = json.loads(manual_path.read_text()) if manual_path.exists() else {}
+        manual_robots = {u: await robots_allowed(u, robots, loads)
+                         for urls in manual.values() for u in urls}
+        (out / "manual_robots.json").write_text(json.dumps(manual_robots, indent=2) + "\n")
+        for u, ok in manual_robots.items():
+            print(f"  manual page {'allowed' if ok else 'DISALLOWED by robots.txt'}: {u}", flush=True)
+
         queue = [d for d in draw if d["draw"] not in results]
         active: set[asyncio.Task] = set()
         if enough():
@@ -488,6 +501,10 @@ def write_outputs(out: Path, draw: list[dict], results: dict[int, dict], args) -
     # overwrites them: {"domain": ["https://...", ...]}
     manual_path = out / "manual_pages.json"
     manual_pages = json.loads(manual_path.read_text()) if manual_path.exists() else {}
+    robots_ok = (json.loads((out / "manual_robots.json").read_text())
+                 if (out / "manual_robots.json").exists() else {})
+    manual_pages = {d: [u for u in urls if robots_ok.get(u, False)]
+                    for d, urls in manual_pages.items()}
     for r in kept:
         have = {p["url"] for p in r["pages"]}
         r["pages"] = r["pages"] + [{"url": u, "source": "manual site: search"}
