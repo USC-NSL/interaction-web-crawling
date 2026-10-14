@@ -37,7 +37,8 @@ parallel_explore.py reads, so the gap also holds for the exploration that follow
 Writes, in --out: list-<id>.csv, draw.json, screening.jsonl, sample.json (the kept
 domains with their pages and sources), pages.json (input for parallel_explore.py),
 manual_search.txt, summary.md. Reads manual_pages.json (pages from a site: search by a
-person) and domain_notes.json (notes by hand, printed in summary.md) when present.
+person), domain_notes.json (notes by hand, printed in summary.md) and domain_exclusions.json
+(domains dropped by hand, with the reason; replaced by the next survivors) when present.
 """
 
 import argparse
@@ -398,12 +399,22 @@ async def main_async(args) -> int:
         with done_path.open("a") as fh:
             fh.write(json.dumps(r) + "\n")
 
+    # domains dropped by hand, with the reason: {"domain": "why"}; replaced like any other
+    dropped_path = out / "domain_exclusions.json"
+    dropped = json.loads(dropped_path.read_text()) if dropped_path.exists() else {}
+    for r in list(results.values()):
+        if r["domain"] in dropped and r.get("reason") != "dropped by hand":
+            record({**r, "kept": False, "reason": "dropped by hand", "was": r.get("reason", "kept"),
+                    "detail": dropped[r["domain"]], "reclassified": True})
+            print(f"  [{r['draw']:3}] {r['domain']:40} dropped by hand (was {r.get('reason', 'kept')})",
+                  flush=True)
+
     # the exclusion rule applies to the whole draw, including domains screened earlier: a
     # domain name match comes before every other reason, a title match before the reasons
     # screening decides after reading the title
     after_title = {"bot challenge", "not a website", "other domain", "login wall", "parked or thin"}
     for r in list(results.values()):
-        if r.get("reason") in {name for name, _ in CATEGORIES}:
+        if r.get("reason") in {name for name, _ in CATEGORIES} | {"dropped by hand"}:
             continue
         by_name = excluded_category(re.sub(r"[.-]", " ", r["domain"]))
         by_title = excluded_category(r.get("title", "") + " " + r.get("description", ""))
@@ -549,6 +560,8 @@ def write_outputs(out: Path, draw: list[dict], results: dict[int, dict], args) -
                               for name, rule in CATEGORIES] + [
              "", "Excluded after screening (were survivors): "
              + (", ".join(f"{r['domain']} ({r['reason']})" for r in excluded) or "none"),
+             *[f"Dropped by hand: {r['domain']}: {r['detail']}" for r in excluded
+               if r["reason"] == "dropped by hand"],
              "Replaced by the next survivors in draw order: " + (", ".join(replaced_by) or "none"),
              "Re-picked (page filter or robots.txt): "
              + (", ".join(r["domain"] for r in kept if r.get("repicked")) or "none")]
