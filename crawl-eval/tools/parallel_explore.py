@@ -16,6 +16,11 @@ Reuse: with --reuse DIR, a page whose exact URL was already explored there (a do
 with exit code 0) gets a copy of that result instead of a new run, and the copy is listed
 in <out>/reused.json. Only valid while the explorer has not changed in between.
 
+Timeout: an explorer still running after --job-timeout minutes is killed with its browser
+(the explorer's own budget is checked only between actions, so a browser call that never
+returns would otherwise hold the run open). The page gets done.json with exit code
+"timeout", so a resume does not retry it.
+
 Resumable: a page whose explorer/done.json exists is skipped, so an interrupted run is
 continued by running the same command again. On Ctrl-C the running explorers are stopped
 and their pages get no done.json, so they run again on resume. Every finished job is appended to
@@ -137,6 +142,7 @@ def main() -> int:
     ap.add_argument("--min-host-gap", type=float, default=MIN_HOST_GAP)
     ap.add_argument("--reuse", type=Path, action="append", default=[],
                     help="a run directory whose completed results are reused for the same URL")
+    ap.add_argument("--job-timeout", type=float, default=30.0, help="minutes per page")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -182,14 +188,20 @@ def main() -> int:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                     start_new_session=True)
             running[n] = proc
-            stdout, stderr = proc.communicate()
+            try:
+                stdout, stderr = proc.communicate(timeout=args.job_timeout * 60)
+                code = proc.returncode
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)     # the explorer and its browser
+                stdout, stderr = proc.communicate()
+                code = "timeout"
             del running[n]
             end = time.time()
             (job_dir / "stdout.txt").write_text(stdout + "\n--- stderr ---\n" + stderr)
             sched.release(h, end)
-            interrupted = sched.stopping
+            interrupted = sched.stopping and code != "timeout"
             if not interrupted:
-                (job_dir / "done.json").write_text(json.dumps({"exit_code": proc.returncode}))
+                (job_dir / "done.json").write_text(json.dumps({"exit_code": code}))
             with log_lock:
                 finished[0] += 1
                 # an interrupted job is logged too, so its host's gap holds on resume,
@@ -198,9 +210,9 @@ def main() -> int:
                     fh.write(json.dumps({"page": page["id"], "url": page["url"], "job": "explorer",
                                          "host": h, "worker": n, "start": start, "end": end,
                                          "exit_code": "interrupted" if interrupted
-                                         else proc.returncode}) + "\n")
+                                         else code}) + "\n")
                 print(f"[{finished[0]}/{total}] w{n} {h} {page['id']}: "
-                      f"{'interrupted' if interrupted else f'exit {proc.returncode}'} "
+                      f"{'interrupted' if interrupted else f'exit {code}'} "
                       f"in {end - start:.0f}s", flush=True)
             if interrupted:
                 return
