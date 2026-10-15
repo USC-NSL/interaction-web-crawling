@@ -25,7 +25,8 @@ Per page, in one browser session (and the whole thing twice, for stability):
                in small steps until the height stops growing or the budget is hit
   3. hover     every visible native control, element with a hover listener (CDP), or
                element a same-origin :hover rule reveals under, with real pointer
-               input so CSS :hover applies
+               input so CSS :hover applies; a hover that uncovers new candidates (a
+               submenu) hovers those next, depth first, while its parent is open
   4. click     every visible safe candidate, repeatedly, until a click produces no
                novel content (or 10 clicks). Candidates come from three sources:
                native controls, CDP listener marks, and cursor:pointer - the last
@@ -67,6 +68,7 @@ SCROLL_BUDGET_VIEWPORTS = 50      # per scroll container; infinite scroll has no
 SCROLL_NO_GROWTH_STEPS = 3        # at the end, stop once height is flat this many steps
 MAX_CLICKS_PER_ELEMENT = 10
 MAX_ACTIONS = 300                 # hovers + clicks + scroll sweeps (see ACTION_ACCOUNTING)
+MAX_HOVER_DEPTH = 3               # submenu levels a hover follows below a top-level candidate
 MAX_SECONDS = 600.0               # wall clock per exploration run
 MAX_DISCOVERY_PASSES = 5
 LISTENER_SCAN_LIMIT = 20000       # elements whose listeners are read per discovery pass
@@ -652,6 +654,7 @@ class Explorer:
         self.listener_scans: list[dict] = []
         self.discovery_passes: list[dict] = []
         self.processed_hover: set[str] = set()
+        self.discovered_ids: set[str] = set()   # every candidate id discover() has returned
         self.processed_click: set[str] = set()
         # per signature: clicks so far and whether the last one revealed something
         self.sig_state: dict[str, dict] = {}
@@ -1184,6 +1187,7 @@ class Explorer:
                 continue
             for cand in cands:
                 cand["frame"] = "main" if frame is self.page.main_frame else frame.url
+                self.discovered_ids.add(cand["id"])
                 out.append((frame, cand))
         return out
 
@@ -1301,13 +1305,28 @@ class Explorer:
 
     # ---- hover ----------------------------------------------------------------
 
-    def hover(self, frame, cand: dict, pass_no: int) -> None:
+    def point_at(self, frame, cand: dict) -> None:
+        # Real pointer input, not dispatchEvent, so CSS :hover applies.
+        frame.locator(f"[data-explore-id='{cand['id']}']").first.hover(timeout=CLICK_TIMEOUT_MS)
+        self.page.wait_for_timeout(HOVER_MS)
+
+    def hover(self, frame, cand: dict, pass_no: int, chain: tuple = ()) -> None:
+        """Hover a candidate; if that uncovers new hover candidates (a submenu), hover
+        those next, depth first, while this one is still open.
+
+        `chain` is the (frame, candidate) path of open ancestors. The first child is
+        reached straight from its parent; every later one is reached again through the
+        whole chain, since exploring a sibling may have closed part of it. Path hovers
+        are pointer moves only, not recorded actions.
+        """
         act = self.begin("hover", cand["selector"], 1, element=cand["id"], name=cand["name"][:80],
-                         via=cand["via"], sources=cand["sources"], frame=cand["frame"], **{"pass": pass_no})
+                         via=cand["via"], sources=cand["sources"], frame=cand["frame"],
+                         depth=len(chain), parent=chain[-1][1]["id"] if chain else None,
+                         **{"pass": pass_no})
+        self.last_mutation()   # installs the observer before the pointer moves
+        hovered = time.time()
         try:
-            # Real pointer input, not dispatchEvent, so CSS :hover applies.
-            frame.locator(f"[data-explore-id='{cand['id']}']").first.hover(timeout=CLICK_TIMEOUT_MS)
-            self.page.wait_for_timeout(HOVER_MS)
+            self.point_at(frame, cand)
         except Exception as exc:  # noqa: BLE001 - covered, moved, detached
             act["outcome"] = f"not hoverable ({type(exc).__name__})"
             return
@@ -1316,6 +1335,29 @@ class Explorer:
         act["novel_text"] = len(self.absorb_text())
         act["new_requests"] = self.novel_content_requests(act["id"])
         act["outcome"] = "hovered"
+
+        # Rediscover only when the hover changed something: a pure CSS menu mutates no
+        # DOM but shows new text, a scripted one mutates.
+        if len(chain) >= MAX_HOVER_DEPTH or self.caps_reached():
+            return
+        if not (act["novel_text"] or act["new_requests"] or self.last_mutation() >= hovered):
+            return
+        known = set(self.discovered_ids)
+        children = [(f, c) for f, c in self.discover()
+                    if c["hover_ok"] and c["id"] not in known and c["id"] not in self.processed_hover]
+        act["uncovered"] = len(children)
+        path = chain + ((frame, cand),)
+        for i, (cf, child) in enumerate(children):
+            if self.caps_reached():
+                return
+            if i:
+                try:
+                    for af, anc in path:
+                        self.point_at(af, anc)
+                except Exception:  # noqa: BLE001 - the chain no longer opens; leave the rest
+                    return
+            self.processed_hover.add(child["id"])
+            self.hover(cf, child, pass_no, path)
 
     # ---- click ----------------------------------------------------------------
 
