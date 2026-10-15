@@ -199,14 +199,18 @@
       "required_actions": [
         {
           "type": "hover",
+          "selector": "h1"
+        },
+        {
+          "type": "hover",
           "selector": ".nav-trigger",
           "repeat": 1
         }
       ],
       "expect_static_discoverable": false,
-      "guard_observable": false,
+      "guard_observable": true,
       "viewport_min_height_px": 720,
-      "notes": "Opens on real mouseover and on keyboard focus. Trigger is a <button> with aria-expanded/aria-haspopup; menu is a labelled list. guard_observable derived empirically: A6 PASSES under guard-removal."
+      "notes": "Opens on real mouseover and on keyboard focus. Trigger is a <button> with aria-expanded/aria-haspopup; menu is a labelled list. guard_observable derived empirically: A6 FAILS under guard-removal."
     },
     {
       "id": "hover-dropdown-inert",
@@ -222,14 +226,18 @@
       "required_actions": [
         {
           "type": "hover",
+          "selector": "h1"
+        },
+        {
+          "type": "hover",
           "selector": ".nav-trigger",
           "repeat": 1
         }
       ],
       "expect_static_discoverable": false,
-      "guard_observable": false,
+      "guard_observable": true,
       "viewport_min_height_px": 720,
-      "notes": "Responds to mouseover only: no focus path, no click path, no ARIA, no tabindex. Verified: programmatic focus, Tab+Enter and a synthetic element.click() all fetch nothing; only mouseover opens it. Note that a real pointer click necessarily fires mouseover first, so a crawler using real mouse input will trigger this reveal incidentally when clicking the element. guard_observable derived empirically: A6 PASSES under guard-removal."
+      "notes": "Responds to mouseover only: no focus path, no click path, no ARIA, no tabindex. Verified: programmatic focus, Tab+Enter and a synthetic element.click() all fetch nothing; only mouseover opens it. Note that a real pointer click necessarily fires mouseover first, so a crawler using real mouse input will trigger this reveal incidentally when clicking the element. guard_observable derived empirically: A6 FAILS under guard-removal."
     },
     {
       "id": "scroll-lazyimg-js",
