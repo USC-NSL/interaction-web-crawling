@@ -215,7 +215,25 @@ def kind_of(url: str, rtype: str, ctype: str) -> str:
     return rtype or (ctype.split("/")[0] if ctype else "other")
 
 
-def analyse(p: dict, blocker: PostHocBlocker) -> tuple[dict, list[dict]]:
+def failed_hover(ex: dict, v: dict) -> bool:
+    """Either run credits the resource to a hover that never happened (it timed out).
+
+    The explorer now excludes such requests from that run's pool, so they are not in
+    the stable set; this applies the same rule to results from before that change.
+    """
+    runs = {r.get("run"): r for r in ex["runs"] if "actions" in r}
+    for n, key in ((1, "run1"), (2, "run2")):
+        att = v.get(key) or {}
+        if att.get("action") != "hover":
+            continue
+        acts = {a["id"]: a for a in runs.get(n, {}).get("actions", [])}
+        if not acts.get(att.get("action_id"), {}).get("outcome", "").startswith("hovered"):
+            return True
+    return False
+
+
+def analyse(p: dict, blocker: PostHocBlocker,
+            drop_failed_hovers: bool = False) -> tuple[dict, list[dict]]:
     ex = explorer_result(p["dir"])
     row = {k: p.get(k) for k in ("id", "url", "group", "tag", "screener_stable")}
     if ex is None:
@@ -242,6 +260,9 @@ def analyse(p: dict, blocker: PostHocBlocker) -> tuple[dict, list[dict]]:
 
     gated, removed = {}, []
     for key, v in ex["stable_new_content"].items():
+        if drop_failed_hovers and failed_hover(ex, v):
+            removed.append({"url": key, "why": "failed hover"})
+            continue
         resp = v.get("response") or {}
         if resp.get("status") != 200:
             continue        # a crawl is scored on 200 responses; a failed request is no reveal

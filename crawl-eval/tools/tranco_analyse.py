@@ -16,6 +16,10 @@ a domain). Its variance is the cluster (ratio) estimator's; the design effect ag
 random sampling of pages gives an effective sample size, and the 95% Wilson interval is
 computed on that effective size.
 
+Hover: a resource that either run credits to a hover that never happened (it timed out,
+typically while Playwright scrolled a page-sized element into view) is not counted, as
+the explorer now does itself; --include-failed-hovers restores the earlier counting.
+
 Writes <run>/tranco_report.json and <run>/tranco_report.md.
 """
 
@@ -94,6 +98,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sample", type=Path, required=True)
     ap.add_argument("--run", type=Path, required=True)
+    ap.add_argument("--include-failed-hovers", action="store_true",
+                    help="count resources credited to hovers that timed out (the earlier rule)")
     args = ap.parse_args()
     sample = json.loads((args.sample / "sample.json").read_text())
     pages = json.loads((args.sample / "pages.json").read_text())["pages"]
@@ -118,7 +124,7 @@ def main() -> int:
             rows.append(row)
             continue
         a, _ = analyse({**p, "tag": "tranco", "dir": job, "group": None, "screener_stable": None},
-                       blocker)
+                       blocker, drop_failed_hovers=not args.include_failed_hovers)
         gated = a.get("gated", {})
         runs = [r for r in ex["runs"] if "actions" in r]
         row.update(explored=True,
@@ -211,6 +217,8 @@ def main() -> int:
           f"{len({r['domain'] for r in explored})} domains", "",
           "Domain level: % [95% Wilson] (k/n). Page level: ratio estimate over domains, Wilson on "
           "the effective size (deff = design effect).", "",
+          ("Hover counts include resources credited to hovers that timed out." if args.include_failed_hovers
+           else "Hover counts exclude resources credited to hovers that timed out (failed hovers)."), "",
           "| action / class | domains | pages |", "|---|---|---|"]
     for key, v in table.items():
         md.append(f"| {key} | {fmt(v['domain'])} | {fmt(v['page'], True)} |")
