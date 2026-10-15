@@ -12,6 +12,7 @@
 !/interaction-corpus/pages/
 !/interaction-corpus/sentinel/
 !/interaction-corpus/manifest.json
+!/interaction-corpus/README.md
 # tools/ and schema/ whole: acceptance.py, mutations.py, gen_sentinels.py and the
 # schema define what the corpus pages are tested against, and must move with them.
 !/interaction-corpus/tools/
