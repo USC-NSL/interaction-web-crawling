@@ -764,6 +764,36 @@
       "guard_observable": true,
       "viewport_min_height_px": 720,
       "notes": "Two product tiles; mouseenter swaps each tile's placeholder for its alternate image (the sentinel), mouseleave swaps back. Plain divs with no ARIA and no tabindex; the listener is the only signal. Same layout and sentinel count as hover-css-bgimage, so the pair isolates CSS :hover from a JS handler. The first action hovers the h1 so each repeat pass leaves and re-enters the tiles. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "hover-intent-menu",
+      "path": "pages/hover/intent-menu.html",
+      "mechanism": "hover",
+      "submechanism": "intent",
+      "variant": "menu",
+      "resource_sentinels": [
+        "/sentinel/hover-intent/menu/01.png",
+        "/sentinel/hover-intent/menu/02.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "hover",
+          "selector": "h1"
+        },
+        {
+          "type": "hover",
+          "selector": ".nav-trigger"
+        },
+        {
+          "type": "wait",
+          "ms": 500
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Hover-intent menu: mouseenter starts a 300 ms timer, mouseleave cancels it, and the menu (whose rows load the sentinels) opens only when the timer completes. Deliberately slower than the corpus's 200 ms reveal rule (spec section 4), hence the wait: a crawler that moves on, or judges the hover, before 300 ms of continuous hover sees nothing. guard_observable derived empirically: A6 FAILS under guard-removal."
     }
   ]
 }
