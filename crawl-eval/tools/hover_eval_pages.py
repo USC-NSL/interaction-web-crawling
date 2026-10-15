@@ -2,13 +2,17 @@
 """Page set for the hover evaluation, tagged by source.
 
 Sources, each page tagged with every one that selected it:
-  tranco-hover      per Tranco host with hover-attributed explorer content (an earlier
-                    explorer, before its :hover-rule source), the page with the most
+  tranco-hover      per Tranco host with content an earlier explorer (before its :hover-rule
+                    source) credits to a completed hover, the page with the most; content
+                    credited to a hover that timed out does not count (rescreen_analyse.
+                    failed_hover)
   tranco-css-fetch  per Tranco host, the page with the most :hover rules that make the
                     browser fetch a url() (background-image, border-image, list-style-image,
                     cursor, content) and whose subject exists (css_hover_screen.py)
-  eval-hover        evaluation-set pages with hover-attributed explorer content
-  eval-negative     evaluation-set pages without
+  eval-hover        evaluation-set pages with content credited to a completed hover
+  hover-artifact    evaluation-set pages whose hover-credited content all came from hovers
+                    that timed out: negatives that look positive
+  eval-negative     evaluation-set pages with no hover-credited content
   css-menu-only     a seeded random cost sample of Tranco pages whose matching :hover rules
                     only show or hide (display, visibility) and none fetches
 Pages per registrable domain (eTLD+1) are capped; a page that would exceed the cap is
@@ -25,13 +29,15 @@ from pathlib import Path
 PKG_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PKG_ROOT / "tools"))
 from parallel_explore import host  # noqa: E402
+from rescreen_analyse import failed_hover  # noqa: E402
 
 FETCH_PROPS = {"background-image", "border-image-source", "list-style-image", "cursor", "content"}
 MENU_PROPS = {"display", "visibility"}
 # the multi-label public suffixes among the hosts this draws from (Public Suffix List)
 MULTI_SUFFIXES = {"co.nz", "co.uk", "com.ar", "com.br", "gov.uk", "org.cn", "nhs.uk",
                   "github.io", "service.gov.uk"}
-ORDER = ["eval-hover", "eval-negative", "tranco-hover", "tranco-css-fetch", "css-menu-only"]
+ORDER = ["eval-hover", "hover-artifact", "eval-negative", "tranco-hover", "tranco-css-fetch",
+         "css-menu-only"]
 
 
 def domain(url: str) -> str:
@@ -65,16 +71,18 @@ def main() -> int:
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
 
-    def hover_resources(d: Path) -> dict[str, tuple[int, str]]:
+    def hover_resources(d: Path) -> dict[str, tuple[int, int, str]]:
+        """Per page: stable resources credited to a completed hover, to a failed one."""
         res = {}
         for f in d.glob("*/explorer/*.json"):
             if f.name in ("done.json", "command.json"):
                 continue
             rec = json.loads(f.read_text())
             if "stable_new_content" in rec:
-                res[f.parent.parent.name] = (
-                    sum(1 for v in rec["stable_new_content"].values()
-                        if v.get("run1", {}).get("action") == "hover"), rec["url"])
+                hov = [v for v in rec["stable_new_content"].values()
+                       if v.get("run1", {}).get("action") == "hover"]
+                failed = sum(1 for v in hov if failed_hover(rec, v))
+                res[f.parent.parent.name] = (len(hov) - failed, failed, rec["url"])
         return res
 
     tranco = hover_resources(args.explored)
@@ -97,7 +105,7 @@ def main() -> int:
         page.update(info)
 
     best: dict[str, tuple] = {}
-    for pid, (n, url) in tranco.items():
+    for pid, (n, _failed, url) in tranco.items():
         if n and (host(url) not in best or n > best[host(url)][0]):
             best[host(url)] = (n, pid, url)
     for n, pid, url in best.values():
@@ -115,13 +123,15 @@ def main() -> int:
 
     evalr = hover_resources(args.eval_explored)
     negatives = args.negatives.split(",")
-    for pid, (n, url) in sorted(evalr.items()):
+    for pid, (n, failed, url) in sorted(evalr.items()):
         if n:
             add(pid, url, "eval-hover", old_hover_resources=n)
+        elif failed:
+            add(pid, url, "hover-artifact", old_failed_hover_resources=failed)
     for pid in negatives:
-        n, url = evalr[pid]
-        if n:
-            raise SystemExit(f"negative {pid} has hover-attributed content")
+        n, failed, url = evalr[pid]
+        if n or failed:
+            raise SystemExit(f"negative {pid} has hover-credited content")
         add(pid, url, "eval-negative")
 
     # cap per registrable domain, highest-priority sources first
