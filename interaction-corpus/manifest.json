@@ -824,6 +824,32 @@
       "guard_observable": true,
       "viewport_min_height_px": 720,
       "notes": "A mouseenter menu whose 'Archives' row opens a submenu on its own mouseenter; the sentinels are the submenu's thumbnails and the top-level menu fetches nothing. The submenu trigger is hidden until the top-level menu is open, and the submenu sits inside its row, so it stays open only while the pointer travels through the parent chain: a crawler must hover the top-level item, then the row, while the menu is still open. guard_observable derived empirically: A6 FAILS under guard-removal."
+    },
+    {
+      "id": "click-globalopen-disclosure",
+      "path": "pages/click/globalopen-disclosure.html",
+      "mechanism": "click",
+      "submechanism": "globalopen",
+      "variant": "disclosure",
+      "resource_sentinels": [
+        "/sentinel/click-globalopen/disclosure/01.png",
+        "/sentinel/click-globalopen/disclosure/02.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "click",
+          "selector": ".card[data-idx='01'] .disclose"
+        },
+        {
+          "type": "click",
+          "selector": ".card[data-idx='02'] .disclose"
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Two disclosure buttons whose click handlers call the page's own global function open(idx), looked up by name at click time. A global function declaration named open replaces window.open, so a crawler that stubs window.open after load replaces the page's function and the reveal silently stops working. A crawler must stub window.open only while it is still native. guard_observable derived empirically: A6 FAILS under guard-removal."
     }
   ]
 }
