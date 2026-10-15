@@ -1753,10 +1753,16 @@ class Explorer:
                 attribution["sources"] = act["sources"]
             if act.get("sweep"):
                 attribution["sweep"] = act["sweep"]
-            if act.get("action") == "click" and act.get("outcome", "").startswith("not clickable"):
-                # The click never happened: whatever arrived while it was attempted
-                # is the page's own doing over time, not a reveal.
-                time_on_page.append({"url": u, **attribution})
+            failed = ((act.get("action") == "click" and act.get("outcome", "").startswith("not clickable"))
+                      or (act.get("action") == "hover" and act.get("outcome", "").startswith("not hoverable")))
+            if failed:
+                # The click or hover never happened: whatever arrived while it was
+                # attempted is the page's own doing over time, not a reveal. A hover
+                # on a page-sized element times out while Playwright scrolls to its
+                # centre, and the lazy content that scroll loads would otherwise be
+                # credited to the hover.
+                time_on_page.append({"url": u, **attribution,
+                                     "reason": f"failed {act.get('action')}"})
                 continue
             if aid in self.nav_excluded_actions:
                 excluded_nav.append({"url": u, **attribution,
