@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>hover-nested-submenu</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f; background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .nav { padding: 8px; border: 1px solid #d8d8e0; border-radius: 10px; background: #fff; }
+  .nav-list, .nav-menu, .sub-menu { margin: 0; padding: 0; list-style: none; }
+  .nav-list { display: flex; gap: 8px; }
+  .nav-item { position: relative; }
+  .nav-trigger, .sub-trigger {
+    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+    font-weight: 600; border-radius: 8px; cursor: default; user-select: none;
+  }
+  .nav-trigger:hover, .sub-trigger:hover { background: #f0f0f6; }
+  .nav-menu, .sub-menu {
+    position: absolute; padding: 10px; min-width: 240px;
+    border: 1px solid #d8d8e0; border-radius: 10px; background: #fff;
+    box-shadow: 0 12px 28px rgba(20, 20, 40, 0.12);
+    display: none;
+  }
+  .nav-menu { top: 100%; left: 0; margin-top: 6px; }
+  .sub-menu { top: -10px; left: 100%; min-width: 300px; }
+  .nav-item.is-open > .nav-menu, .has-sub.is-open > .sub-menu { display: block; }
+  .menu-row { position: relative; }
+  .menu-row > a { display: block; padding: 10px 14px; color: #1b1b1f; }
+  .sub-menu li { display: flex; align-items: center; gap: 12px; padding: 8px; }
+  .sub-menu img { width: 64px; height: 44px; flex: none; background: #e4e4ee; border-radius: 4px; }
+  .sub-menu a { color: #1b1b1f; }
+  .sub-menu .meta { font-size: 13px; color: #6a6a76; }
+</style>
+</head>
+<body>
+<main>
+  <h1>hover-nested-submenu</h1>
+  <p class="lede">
+    Hover "Collections" to open its menu, then hover "Archives" inside it to open a submenu
+    with a thumbnail per row. The submenu is only reachable through the open menu.
+  </p>
+
+  <nav class="nav" aria-label="Primary">
+    <ul class="nav-list">
+      <li class="nav-item">
+        <span class="nav-trigger">
+          Collections
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <ul class="nav-menu">
+          <li class="menu-row"><a href="#recent">Recently added</a></li>
+          <li class="menu-row has-sub">
+            <span class="sub-trigger">
+              Archives
+              <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <ul class="sub-menu">
+              <li data-idx="01">
+                <div><a href="#winter">Winter archive</a><div class="meta">42 items</div></div>
+              </li>
+              <li data-idx="02">
+                <div><a href="#field">Field notebooks</a><div class="meta">17 items</div></div>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </nav>
+</main>
+
+<script>
+  const MECH = 'hover-nested';
+  const VARIANT = 'submenu';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  const item = document.querySelector('.nav-item');
+  const row = item.querySelector('.has-sub');
+  const sub = row.querySelector('.sub-menu');
+
+  // The top-level menu fetches nothing; it only makes the "Archives" row reachable.
+  // Leaving the top-level item closes the whole chain.
+  item.addEventListener('mouseenter', function () {
+    item.classList.add('is-open');
+  });
+  item.addEventListener('mouseleave', function () {
+    item.classList.remove('is-open');
+    row.classList.remove('is-open');
+  });
+
+  // The submenu sits inside its row, so the pointer stays inside the chain on the way in.
+  row.addEventListener('mouseenter', function () {
+    row.classList.add('is-open');
+    Array.prototype.forEach.call(sub.querySelectorAll('li[data-idx]'), function (li) {
+      const img = fetchSentinel(li.dataset.idx);
+      if (img) {
+        img.alt = '';
+        li.prepend(img);
+      }
+    });
+  });
+  row.addEventListener('mouseleave', function () {
+    row.classList.remove('is-open');
+  });
+</script>
+</body>
+</html>
