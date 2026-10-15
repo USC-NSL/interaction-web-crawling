@@ -381,9 +381,26 @@ def run_dynamic(browser, base_url: str, page: dict, log: RequestLogReader) -> di
     problems = []
     if repeat_error:
         problems.append(f"repeated required_actions raised {repeat_error}")
+    css_fetched = page.get("sentinel_fetch", "script") == "css"
     for url in sorted(declared):
         total = total_attempts.get(url, 0)
         before = first_attempts.get(url, 0)
+        if css_fetched:
+            # The style engine requests these, so the API-boundary wrappers never see
+            # the real fetch and there is no page-JS guard. Any script attempt is a
+            # defect: the page is no longer a CSS-only reveal. The network count is
+            # the session total, load included.
+            if total:
+                problems.append(
+                    f"absolute: {url} attempted {total}x by script; a CSS-fetched sentinel "
+                    "must be requested by the style engine only"
+                )
+            requests = first_paths.count(url) + second_paths.count(url)
+            if requests != 1:
+                problems.append(
+                    f"absolute network: {url} requested {requests}x across the session, expected exactly 1"
+                )
+            continue
         # Absolute: exactly one attempt across the whole session. A delta check is
         # blind to duplicates inside a single pass - IntersectionObserver fires on
         # every intersection change, mouseover repeatedly across one hover.

@@ -101,6 +101,15 @@
      "type": "integer",
      "minimum": 1
     },
+    "sentinel_fetch": {
+     "type": "string",
+     "enum": [
+      "script",
+      "css"
+     ],
+     "default": "script",
+     "description": "Who requests the resource sentinels. script (the default): page JS through fetchSentinel(idx) and its already-fetched guard. css: the browser's style engine, from a rule the page installs with assetUrl(); there is no page-JS guard, and A6 asserts zero script attempts and exactly one network request instead."
+    },
     "notes": {
      "type": "string"
     }

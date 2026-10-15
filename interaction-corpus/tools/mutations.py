@@ -147,6 +147,22 @@ def m_text_guard_removal(html: str, page: dict) -> str | None:
     return None
 
 
+def m_script_fetch_css(html: str, page: dict) -> str | None:
+    """A CSS-fetched page also requests its sentinel from script, on the first hover.
+
+    The counterpart of guard-removal for sentinel_fetch: css pages, which have no
+    page-JS guard: the browser's per-document image cache dedupes the network
+    request, so only A6's zero-script-attempts assertion can see the defect.
+    """
+    url = _first_sentinel(page)
+    if not url or page.get("sentinel_fetch", "script") != "css":
+        return None
+    fetch = _opaque_fetch_js(url).removeprefix("<script>").removesuffix("</script>")
+    inject = ("<script>document.addEventListener('mouseover', function once(){"
+              "document.removeEventListener('mouseover', once);" + fetch + "});</script>")
+    return html.replace("</body>", inject + "\n</body>")
+
+
 def m_text_visible_on_load(html: str, page: dict) -> str | None:
     if not page["text_sentinels"]:
         return None
@@ -206,6 +222,8 @@ MUTATIONS: list[Mutation] = [
              m_guard_removal, _guard_expected),
     Mutation("text-guard-removal", "text reveal applied twice (template cloned again)",
              m_text_guard_removal, _guard_expected),
+    Mutation("script-fetch-css", "CSS-fetched sentinel also requested by script on hover",
+             m_script_fetch_css, lambda p: {"A6"}),
     Mutation("external-dep", "page loads an off-origin stylesheet",
              m_external_dep, lambda p: {"A5"}),
 ]
@@ -214,7 +232,7 @@ REQUIRED_COVERAGE = {  # spec §11: every mechanism carries at least these
     "A3": ("fires-on-load", "text-visible-on-load"),
     "A4": ("static-leak-comment", "static-leak-preload"),
     "A2": ("dead-handler-url", "dead-handler-event"),
-    "A6": ("guard-removal", "text-guard-removal"),
+    "A6": ("guard-removal", "text-guard-removal", "script-fetch-css"),
 }
 
 
@@ -363,6 +381,18 @@ def main() -> int:
                         )
                         print(f"  {page_id} / {mut.name}: n/a - derived guard_observable=false "
                               "(no guard of either kind)", flush=True)
+                elif (mut.name == "guard-removal" and args.derive
+                      and page.get("sentinel_fetch", "script") == "css"):
+                    # The style engine fetches these sentinels; the page has no
+                    # already-fetched guard, so there is nothing for A6 to observe.
+                    # script-fetch-css is what exercises A6 on such a page.
+                    derived[page_id] = (
+                        False,
+                        "sentinels are fetched by the style engine, so no page-JS guard exists "
+                        "to remove; A6 is exercised by script-fetch-css instead",
+                    )
+                    print(f"  {page_id} / {mut.name}: n/a - derived guard_observable=false "
+                          "(CSS-fetched sentinels, no guard)", flush=True)
                 continue
             try:
                 with tempfile.TemporaryDirectory(prefix="mutation-") as tmpdir:
