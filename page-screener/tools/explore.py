@@ -446,6 +446,19 @@ DISCOVER_JS = r"""
     return st.visibility !== 'hidden' && st.display !== 'none' && st.pointerEvents !== 'none';
   };
   // Fourth source, hover only: see CSS_HOVER_JS.
+  // A page root, or an element covering most of the viewport, is no hover target: the
+  // pointer lands on whatever is at its centre, and moving there scrolls the page, so
+  // what loads is the scroll's doing (gymshark's React root: 120 lazy images credited
+  // to a hover that timed out).
+  const ROOT_IDS = /^(root|app|__next|__nuxt|___gatsby)$/;
+  const bodyKids = Array.from(document.body ? document.body.children : [])
+    .filter((c) => !/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|LINK)$/.test(c.tagName));
+  const pageSized = (el) => {
+    if (el === document.documentElement || el === document.body) return true;
+    if (el.parentElement === document.body && (ROOT_IDS.test(el.id) || bodyKids.length === 1)) return true;
+    const r = el.getBoundingClientRect();
+    return r.width > 0.8 * innerWidth && r.height > 0.8 * innerHeight;
+  };
   const out = [];
   const visit = (root) => {
     const cssHover = cssHoverTargets(root);
@@ -494,7 +507,7 @@ DISCOVER_JS = r"""
         target: anchor ? (anchor.getAttribute('target') || '') : '',
         role: el.getAttribute('role') || '',
         click_ok: nativeClick || lstClick || cursorPointer,
-        hover_ok: (nativeHover || lstHover || cssHov) && !linksAway,
+        hover_ok: (nativeHover || lstHover || cssHov) && !linksAway && !pageSized(el),
         via: [nativeClick ? 'native-click' : null, nativeHover ? 'native-hover' : null,
               lstClick ? 'cdp-listener-click' : null, lstHover ? 'cdp-listener-hover' : null,
               cursorPointer ? 'cursor-pointer' : null, cssHov ? 'css-hover' : null].filter(Boolean),
