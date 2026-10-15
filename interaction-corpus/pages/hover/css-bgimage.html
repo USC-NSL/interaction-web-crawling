@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>hover-css-bgimage</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f; background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .tiles { display: flex; gap: 16px; }
+  .tile {
+    width: 220px; padding: 10px; border: 1px solid #d8d8e0; border-radius: 10px;
+    background: #fff; cursor: default; user-select: none;
+  }
+  .tile-img {
+    height: 140px; border-radius: 6px;
+    background: linear-gradient(135deg, #e4e4ee, #d4d4e2) center / cover no-repeat;
+  }
+  .tile-name { margin-top: 8px; font-weight: 600; }
+  .tile-price { font-size: 14px; color: #6a6a76; }
+</style>
+<style id="sentinel-rules"></style>
+</head>
+<body>
+<main>
+  <h1>hover-css-bgimage</h1>
+  <p class="lede">
+    Hover a product tile to see its alternate photo. The swap is a CSS hover rule: nothing on
+    the page listens for the pointer, and only a real hover shows the photo.
+  </p>
+
+  <div class="tiles">
+    <div class="tile" data-idx="01">
+      <div class="tile-img"></div>
+      <div class="tile-name">Field notebook</div>
+      <div class="tile-price">$18</div>
+    </div>
+    <div class="tile" data-idx="02">
+      <div class="tile-img"></div>
+      <div class="tile-name">Archive box</div>
+      <div class="tile-price">$34</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const MECH = 'hover-css';
+  const VARIANT = 'bgimage';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  // Each tile's alternate photo is set by a :hover rule, so the browser requests it
+  // the first time the tile is hovered. The rules go in through the CSSOM so no url()
+  // is in the served HTML, and no script ever requests a photo: there is no
+  // fetchSentinel on this page.
+  const rules = document.getElementById('sentinel-rules').sheet;
+  Array.prototype.forEach.call(document.querySelectorAll('.tile[data-idx]'), function (tile) {
+    const idx = tile.dataset.idx;
+    rules.insertRule(
+      '.tile[data-idx="' + idx + '"]:hover .tile-img { background-image: url("' + assetUrl(idx) + '"); }',
+      rules.cssRules.length);
+  });
+</script>
+</body>
+</html>
