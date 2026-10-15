@@ -326,6 +326,55 @@ FIND_BY_SIGNATURE_JS = r"""
 }
 """
 
+# :hover rules that reveal something under their subject (display, visibility, opacity)
+# or give it a background-image url. A pure CSS menu or image swap has no listener and
+# is often not a native control; only a stylesheet says it reacts to the pointer. The
+# subject is the selector up to the compound carrying :hover. A hover colour alone does
+# not count; a sheet whose cssRules throw (cross-origin) is counted as unreadable and
+# skipped; a selector that does not parse once cut (:hover inside :is() or :not(),
+# nesting) is skipped. Shared by discovery and by crawl-eval's css_hover_screen.py.
+CSS_HOVER_JS = r"""
+  const HOVER_PROPS = ['display', 'visibility', 'opacity'];
+  const cssHoverRules = (root) => {
+    const rules = [];
+    let sheets = 0, unreadable = 0;
+    const scan = (list) => {
+      for (const rule of list) {
+        if (!rule.selectorText) {
+          if (rule.cssRules) scan(rule.cssRules);   // @media, @supports, @layer
+          continue;
+        }
+        if (rule.selectorText.indexOf(':hover') === -1) continue;
+        const st = rule.style;
+        const props = HOVER_PROPS.filter((p) => st.getPropertyValue(p));
+        if (st.getPropertyValue('background-image').indexOf('url(') !== -1) props.push('background-image');
+        if (!props.length) continue;
+        for (const sel of rule.selectorText.split(',')) {
+          const cut = sel.indexOf(':hover');
+          if (cut === -1) continue;
+          const target = sel.slice(0, cut).trim();
+          if (!target || /[\s>+~]$/.test(target)) continue;
+          let subjects = null;
+          try { subjects = Array.from(root.querySelectorAll(target)); } catch (e) { /* did not parse once cut */ }
+          rules.push({selector: sel.trim(), target, props, subjects});
+        }
+      }
+    };
+    for (const sheet of Array.from(root.styleSheets || []).concat(Array.from(root.adoptedStyleSheets || []))) {
+      sheets += 1;
+      let list;
+      try { list = sheet.cssRules; } catch (e) { unreadable += 1; continue; }
+      if (list) scan(list);
+    }
+    return {rules, sheets, unreadable};
+  };
+  const cssHoverTargets = (root) => {
+    const found = new Set();
+    for (const r of cssHoverRules(root).rules) (r.subjects || []).forEach((el) => found.add(el));
+    return found;
+  };
+"""
+
 # Candidate discovery. Walks the document and every open shadow root, keeps visible
 # elements from any of the sources (native control, CDP listener mark,
 # cursor:pointer, and for hover a :hover stylesheet rule), and gives each a stable id
@@ -334,7 +383,7 @@ DISCOVER_JS = r"""
 ({prefix, clickSel, hoverSel, delegationRoots, pointer}) => {
   if (!window.__explorePrefix) { window.__explorePrefix = prefix; window.__exploreSeq = 0; }
   const P = window.__explorePrefix;
-""" + SIGNATURE_JS + r"""
+""" + SIGNATURE_JS + CSS_HOVER_JS + r"""
   const acc = (el) => (
     el.getAttribute('aria-label') || el.getAttribute('title') ||
     el.getAttribute('alt') || (el.tagName === 'INPUT' ? (el.value || '') : '') ||
@@ -387,45 +436,7 @@ DISCOVER_JS = r"""
     const st = getComputedStyle(el);
     return st.visibility !== 'hidden' && st.display !== 'none' && st.pointerEvents !== 'none';
   };
-  // Fourth source, hover only: elements a same-origin :hover rule reveals something
-  // under (display, visibility, opacity) or gives a background-image url. A pure CSS
-  // menu or image swap has no listener and is often not a native control, and only a
-  // stylesheet says it reacts to the pointer. The hovered element is the selector up
-  // to the compound carrying :hover. A hover colour alone does not count; a sheet
-  // whose cssRules throw (cross-origin) is skipped; a selector that does not parse
-  // once cut (:hover inside :is() or :not(), nesting) is skipped.
-  const HOVER_PROPS = ['display', 'visibility', 'opacity'];
-  const cssHoverTargets = (root) => {
-    const found = new Set();
-    const scan = (rules) => {
-      for (const rule of rules) {
-        if (!rule.selectorText) {
-          if (rule.cssRules) scan(rule.cssRules);   // @media, @supports, @layer
-          continue;
-        }
-        if (rule.selectorText.indexOf(':hover') === -1) continue;
-        const st = rule.style;
-        if (!HOVER_PROPS.some((p) => st.getPropertyValue(p)) &&
-            st.getPropertyValue('background-image').indexOf('url(') === -1) continue;
-        for (const sel of rule.selectorText.split(',')) {
-          const cut = sel.indexOf(':hover');
-          if (cut === -1) continue;
-          const target = sel.slice(0, cut).trim();
-          if (!target || /[\s>+~]$/.test(target)) continue;
-          try {
-            root.querySelectorAll(target).forEach((el) => found.add(el));
-          } catch (e) { /* did not parse once cut */ }
-        }
-      }
-    };
-    const sheets = Array.from(root.styleSheets || []).concat(Array.from(root.adoptedStyleSheets || []));
-    for (const sheet of sheets) {
-      let rules;
-      try { rules = sheet.cssRules; } catch (e) { continue; }
-      if (rules) scan(rules);
-    }
-    return found;
-  };
+  // Fourth source, hover only: see CSS_HOVER_JS.
   const out = [];
   const visit = (root) => {
     const cssHover = cssHoverTargets(root);
