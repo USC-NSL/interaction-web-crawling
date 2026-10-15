@@ -23,8 +23,9 @@ Per page, in one browser session (and the whole thing twice, for stability):
   1. baseline  load, networkidle + 10s, record content requests
   2. scroll    the main page, then every scrollable element and same-origin iframe,
                in small steps until the height stops growing or the budget is hit
-  3. hover     every visible native control or element with a hover listener (CDP),
-               with real pointer input so CSS :hover applies
+  3. hover     every visible native control, element with a hover listener (CDP), or
+               element a same-origin :hover rule reveals under, with real pointer
+               input so CSS :hover applies
   4. click     every visible safe candidate, repeatedly, until a click produces no
                novel content (or 10 clicks). Candidates come from three sources:
                native controls, CDP listener marks, and cursor:pointer - the last
@@ -315,8 +316,9 @@ FIND_BY_SIGNATURE_JS = r"""
 """
 
 # Candidate discovery. Walks the document and every open shadow root, keeps visible
-# elements from any of the three sources (native control, CDP listener mark,
-# cursor:pointer), and gives each a stable id that survives later passes.
+# elements from any of the sources (native control, CDP listener mark,
+# cursor:pointer, and for hover a :hover stylesheet rule), and gives each a stable id
+# that survives later passes.
 DISCOVER_JS = r"""
 ({prefix, clickSel, hoverSel, delegationRoots, pointer}) => {
   if (!window.__explorePrefix) { window.__explorePrefix = prefix; window.__exploreSeq = 0; }
@@ -374,8 +376,48 @@ DISCOVER_JS = r"""
     const st = getComputedStyle(el);
     return st.visibility !== 'hidden' && st.display !== 'none' && st.pointerEvents !== 'none';
   };
+  // Fourth source, hover only: elements a same-origin :hover rule reveals something
+  // under (display, visibility, opacity) or gives a background-image url. A pure CSS
+  // menu or image swap has no listener and is often not a native control, and only a
+  // stylesheet says it reacts to the pointer. The hovered element is the selector up
+  // to the compound carrying :hover. A hover colour alone does not count; a sheet
+  // whose cssRules throw (cross-origin) is skipped; a selector that does not parse
+  // once cut (:hover inside :is() or :not(), nesting) is skipped.
+  const HOVER_PROPS = ['display', 'visibility', 'opacity'];
+  const cssHoverTargets = (root) => {
+    const found = new Set();
+    const scan = (rules) => {
+      for (const rule of rules) {
+        if (!rule.selectorText) {
+          if (rule.cssRules) scan(rule.cssRules);   // @media, @supports, @layer
+          continue;
+        }
+        if (rule.selectorText.indexOf(':hover') === -1) continue;
+        const st = rule.style;
+        if (!HOVER_PROPS.some((p) => st.getPropertyValue(p)) &&
+            st.getPropertyValue('background-image').indexOf('url(') === -1) continue;
+        for (const sel of rule.selectorText.split(',')) {
+          const cut = sel.indexOf(':hover');
+          if (cut === -1) continue;
+          const target = sel.slice(0, cut).trim();
+          if (!target || /[\s>+~]$/.test(target)) continue;
+          try {
+            root.querySelectorAll(target).forEach((el) => found.add(el));
+          } catch (e) { /* did not parse once cut */ }
+        }
+      }
+    };
+    const sheets = Array.from(root.styleSheets || []).concat(Array.from(root.adoptedStyleSheets || []));
+    for (const sheet of sheets) {
+      let rules;
+      try { rules = sheet.cssRules; } catch (e) { continue; }
+      if (rules) scan(rules);
+    }
+    return found;
+  };
   const out = [];
   const visit = (root) => {
+    const cssHover = cssHoverTargets(root);
     const els = root.querySelectorAll('*');
     for (const el of els) {
       if (el.shadowRoot) visit(el.shadowRoot);
@@ -385,6 +427,7 @@ DISCOVER_JS = r"""
       const nativeHover = el.matches(hoverSel);
       const lstClick = lst.indexOf('click') !== -1;
       const lstHover = lst.indexOf('hover') !== -1;
+      const cssHov = cssHover.has(el);
       // Third source: cursor:pointer. React and friends attach every handler at the
       // root, so DOMDebugger sees nothing on the element that is actually clickable,
       // and a delegated handler cannot be traced back to its target. The pointer
@@ -394,7 +437,7 @@ DISCOVER_JS = r"""
       // icons that would otherwise each become a candidate.
       const cursorPointer = pointer && getComputedStyle(el).cursor === 'pointer' &&
         !(el.parentElement && getComputedStyle(el.parentElement).cursor === 'pointer');
-      if (!(nativeClick || nativeHover || lstClick || lstHover || cursorPointer)) continue;
+      if (!(nativeClick || nativeHover || lstClick || lstHover || cursorPointer || cssHov)) continue;
       if (!visible(el)) continue;
       if (!el.hasAttribute('data-explore-id')) {
         window.__exploreSeq += 1;
@@ -420,15 +463,16 @@ DISCOVER_JS = r"""
         target: anchor ? (anchor.getAttribute('target') || '') : '',
         role: el.getAttribute('role') || '',
         click_ok: nativeClick || lstClick || cursorPointer,
-        hover_ok: (nativeHover || lstHover) && !linksAway,
+        hover_ok: (nativeHover || lstHover || cssHov) && !linksAway,
         via: [nativeClick ? 'native-click' : null, nativeHover ? 'native-hover' : null,
               lstClick ? 'cdp-listener-click' : null, lstHover ? 'cdp-listener-hover' : null,
-              cursorPointer ? 'cursor-pointer' : null].filter(Boolean),
-        // Which of the three discovery sources found this element. The later
+              cursorPointer ? 'cursor-pointer' : null, cssHov ? 'css-hover' : null].filter(Boolean),
+        // Which of the four discovery sources found this element. The later
         // analysis needs to know how much each source contributes on its own.
         sources: [(nativeClick || nativeHover) ? 'native' : null,
                   (lstClick || lstHover) ? 'cdp-listener' : null,
-                  cursorPointer ? 'cursor-pointer' : null].filter(Boolean),
+                  cursorPointer ? 'cursor-pointer' : null,
+                  cssHov ? 'css-hover' : null].filter(Boolean),
       });
     }
   };
