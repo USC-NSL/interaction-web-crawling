@@ -49,6 +49,12 @@ CONFIGS = {
     "C": ("C.js", None, ("demo", "production", "negative")),
     "F": ("F.js", None, ("demo", "production", "negative")),
     "F2": ("F2.js", None, ("demo", "production", "negative")),
+    # the hover evaluation (parallel_explore.py --crawl): RevealClick alone, AutoHover
+    # alone with synthetic and with real pointer input, and both in sequence
+    "RC": ("RC.js", None, ("hover",)),
+    "AHS": ("AHS.js", None, ("hover",)),
+    "AHR": ("AHR.js", None, ("hover",)),
+    "SEQ": ("SEQ.js", None, ("hover",)),
 }
 
 
@@ -104,7 +110,8 @@ def crawl_cmd(job: dict, job_dir: Path, bundles: Path) -> list[str]:
     if bundle:
         cmd += ["-v", f"{bundles / bundle}:/app/node_modules/browsertrix-behaviors/dist/behaviors.js:ro"]
     cmd += [IMAGE, "crawl", "--url", job["page"]["url"], "--scopeType", "page", "--workers", "1",
-            "--behaviors", job["behaviors"], "--behaviorTimeout", "300", "--postLoadDelay", "10",
+            "--behaviors", job["behaviors"],
+            "--behaviorTimeout", str(job.get("behavior_timeout", 300)), "--postLoadDelay", "10",
             "--userAgentSuffix", UA_SUFFIX, "--logging", "behaviors,debug", "--collection", "c"]
     if selector:
         cmd += ["--clickSelector", selector]
