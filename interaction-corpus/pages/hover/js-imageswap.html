@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>hover-js-imageswap</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 32px 24px 96px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1b1b1f; background: #fbfbfd;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 28px; color: #55555f; }
+  .tiles { display: flex; gap: 16px; }
+  .tile {
+    width: 220px; padding: 10px; border: 1px solid #d8d8e0; border-radius: 10px;
+    background: #fff; cursor: default; user-select: none;
+  }
+  .tile-img {
+    height: 140px; border-radius: 6px; overflow: hidden;
+    background: linear-gradient(135deg, #e4e4ee, #d4d4e2);
+  }
+  .tile-img img { display: none; width: 100%; height: 100%; object-fit: cover; }
+  .tile.is-swapped .tile-img img { display: block; }
+  .tile-name { margin-top: 8px; font-weight: 600; }
+  .tile-price { font-size: 14px; color: #6a6a76; }
+</style>
+</head>
+<body>
+<main>
+  <h1>hover-js-imageswap</h1>
+  <p class="lede">
+    Hover a product tile to see its alternate photo; moving away shows the placeholder again.
+    Script swaps the photo when the pointer enters the tile.
+  </p>
+
+  <div class="tiles">
+    <div class="tile" data-idx="01">
+      <div class="tile-img"></div>
+      <div class="tile-name">Field notebook</div>
+      <div class="tile-price">$18</div>
+    </div>
+    <div class="tile" data-idx="02">
+      <div class="tile-img"></div>
+      <div class="tile-name">Archive box</div>
+      <div class="tile-price">$34</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const MECH = 'hover-js';
+  const VARIANT = 'imageswap';
+
+  function assetUrl(idx) {
+    return ['', 'sentinel', MECH, VARIANT, idx + '.png'].join('/');
+  }
+
+  const fetched = new Set();
+  function fetchSentinel(idx) {
+    if (fetched.has(idx)) return null;
+    fetched.add(idx);
+    const img = new Image();
+    img.src = assetUrl(idx);
+    return img;
+  }
+
+  // mouseenter only. No focus or click path, no ARIA: the listener is the only sign
+  // that the tile responds to the pointer.
+  Array.prototype.forEach.call(document.querySelectorAll('.tile[data-idx]'), function (tile) {
+    tile.addEventListener('mouseenter', function () {
+      const img = fetchSentinel(tile.dataset.idx);
+      if (img) {
+        img.alt = '';
+        tile.querySelector('.tile-img').append(img);
+      }
+      tile.classList.add('is-swapped');
+    });
+    tile.addEventListener('mouseleave', function () {
+      tile.classList.remove('is-swapped');
+    });
+  });
+</script>
+</body>
+</html>

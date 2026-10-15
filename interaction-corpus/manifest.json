@@ -734,6 +734,36 @@
       "viewport_min_height_px": 720,
       "sentinel_fetch": "css",
       "notes": "Two product tiles whose :hover rule sets a background-image (installed at load through CSSOM insertRule from assetUrl(), so no url() is in the served HTML). The tiles are plain divs with no listener, no ARIA and no tabindex: only a stylesheet scan can tell they react to hover, and only real pointer input sets :hover. Same layout and sentinel count as hover-js-imageswap, which reveals by mouseenter instead. guard_observable derived empirically: sentinels are fetched by the style engine, so no page-JS guard exists to remove; A6 is exercised by script-fetch-css instead."
+    },
+    {
+      "id": "hover-js-imageswap",
+      "path": "pages/hover/js-imageswap.html",
+      "mechanism": "hover",
+      "submechanism": "js",
+      "variant": "imageswap",
+      "resource_sentinels": [
+        "/sentinel/hover-js/imageswap/01.png",
+        "/sentinel/hover-js/imageswap/02.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "hover",
+          "selector": "h1"
+        },
+        {
+          "type": "hover",
+          "selector": ".tile[data-idx='01']"
+        },
+        {
+          "type": "hover",
+          "selector": ".tile[data-idx='02']"
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": true,
+      "viewport_min_height_px": 720,
+      "notes": "Two product tiles; mouseenter swaps each tile's placeholder for its alternate image (the sentinel), mouseleave swaps back. Plain divs with no ARIA and no tabindex; the listener is the only signal. Same layout and sentinel count as hover-css-bgimage, so the pair isolates CSS :hover from a JS handler. The first action hovers the h1 so each repeat pass leaves and re-enters the tiles. guard_observable derived empirically: A6 FAILS under guard-removal."
     }
   ]
 }
