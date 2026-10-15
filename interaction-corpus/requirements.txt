@@ -1,0 +1,7 @@
+# Test harness only. The pages themselves have zero dependencies of any kind
+# (no CDN, no fonts, no frameworks) and must stay that way -- see spec §4.
+#
+# After installing, fetch the browser binary once:
+#     python -m playwright install chromium
+playwright==1.62.0
+jsonschema==4.26.0
