@@ -676,6 +676,33 @@
       "guard_observable": false,
       "viewport_min_height_px": 720,
       "notes": "Load more backed by a slow server: each click fetches the batch's data with serve.py's delay=800 parameter, then draws the batch and requests its image (the sentinel). Clicks while a batch is loading are ignored. Deliberately slower than the corpus's 200 ms reveal rule (spec section 4), hence the waits between clicks. A crawler that judges a click after a fixed 250 ms sees nothing new on the first click and stops; one that waits for the click's request and the DOM changes it brings recovers all four. Batches are one-way: guard_observable derived empirically: A6 PASSES under guard-removal."
+    },
+    {
+      "id": "hover-css-menu",
+      "path": "pages/hover/css-menu.html",
+      "mechanism": "hover",
+      "submechanism": "css",
+      "variant": "menu",
+      "resource_sentinels": [
+        "/sentinel/hover-css/menu/01.png",
+        "/sentinel/hover-css/menu/02.png"
+      ],
+      "text_sentinels": [],
+      "required_actions": [
+        {
+          "type": "hover",
+          "selector": "h1"
+        },
+        {
+          "type": "hover",
+          "selector": ".nav-trigger"
+        }
+      ],
+      "expect_static_discoverable": false,
+      "guard_observable": false,
+      "viewport_min_height_px": 720,
+      "sentinel_fetch": "css",
+      "notes": "Pure CSS menu: li:hover > .nav-menu { display: block }, no event handler anywhere on the page. Each menu row's thumbnail is a CSS background-image installed at load through CSSOM insertRule from assetUrl(), so no url() is in the served HTML and autofetch (which reads url() only inside @media rules) harvests nothing; the browser requests a thumbnail only once the menu renders. Synthetic mouse events do not set :hover, so only real pointer input reveals it. The first action hovers the h1 so the repeat passes leave and re-enter the menu. guard_observable derived empirically: sentinels are fetched by the style engine, so no page-JS guard exists to remove; A6 is exercised by script-fetch-css instead."
     }
   ]
 }
