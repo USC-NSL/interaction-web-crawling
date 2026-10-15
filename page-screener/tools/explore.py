@@ -90,12 +90,21 @@ TEXT_FRAGMENT_LOG_LIMIT = 2000
 PHASES = ("scroll", "hover", "click")
 PHASE_SHARES = {"scroll": (0.10, 0.20), "hover": (0.30, 0.25), "click": (0.60, 0.55)}
 BACKSTOP_FACTOR = 2.0             # run-level wall clock, a safety net beyond the phases
+# Only a native window.open is stubbed. A page that declares a global function open()
+# has replaced window.open with its own function and calls it by that name; stubbing
+# it would break the page, so it is left alone and reported.
 OPEN_STUB_JS = """
 (() => {
+  if (window.open && window.open.__exploreStub) return;
+  if (!Function.prototype.toString.call(window.open).includes('[native code]')) {
+    try { window.__exploreOpenNotStubbed && window.__exploreOpenNotStubbed(location.href); } catch (e) {}
+    return;
+  }
   window.open = function (url) {
     try { window.__exploreBlockedOpen && window.__exploreBlockedOpen(String(url)); } catch (e) {}
     return null;
   };
+  window.open.__exploreStub = true;
 })();
 """
 RAW_URLS_PER_KEY = 5              # raw URLs kept per origin+path key; --all-raw-urls lifts it
@@ -669,6 +678,7 @@ class Explorer:
         self.raw_types: dict[str, str] = {}    # raw URL -> resource type, first seen
         self.blocked_writes: list[dict] = []   # non-GET/HEAD requests the guard aborted
         self.blocked_opens: list[dict] = []    # window.open calls the stub refused
+        self.open_not_stubbed: list[dict] = []  # frames whose page replaced window.open
         self.allowed_writes: list[dict] = []   # ... and the ones an allowance let through
         # raw URL -> CDP initiator, CDP resource type, and Sec-Purpose/Purpose header
         self.request_meta: dict[str, dict] = {}
@@ -838,6 +848,10 @@ class Explorer:
             pass
         route.fallback()
 
+    def _open_not_stubbed(self, url: str) -> None:
+        print(f"    window.open overridden by page, not stubbed: {url}", flush=True)
+        self.open_not_stubbed.append({"url": url, "action": self.current})
+
     def stub_window_open(self) -> None:
         """From the first interaction on, window.open opens nothing and is logged.
 
@@ -848,6 +862,7 @@ class Explorer:
             self.page.expose_function(
                 "__exploreBlockedOpen",
                 lambda url: self.blocked_opens.append({"url": url, "action": self.current}))
+            self.page.expose_function("__exploreOpenNotStubbed", self._open_not_stubbed)
             self.page.add_init_script(OPEN_STUB_JS)
         except Exception:  # noqa: BLE001 - instrumentation must never break a page
             pass
@@ -1779,6 +1794,7 @@ class Explorer:
             "request_meta": dict(sorted(self.request_meta.items())),
             "blocked_writes": self.blocked_writes,
             "blocked_opens": self.blocked_opens,
+            "open_not_stubbed": self.open_not_stubbed,
             "allowed_writes": self.allowed_writes,
             "baseline_noise": baseline_noise,
             "new_content": new_content,
