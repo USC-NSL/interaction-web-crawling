@@ -327,7 +327,8 @@ FIND_BY_SIGNATURE_JS = r"""
 """
 
 # :hover rules that reveal something under their subject (display, visibility, opacity)
-# or give it a background-image url. A pure CSS menu or image swap has no listener and
+# or give it a url() the browser fetches (background-image, border-image, list-style-image,
+# cursor, content); discovery uses the show/hide and background-image ones. A pure CSS menu or image swap has no listener and
 # is often not a native control; only a stylesheet says it reacts to the pointer. The
 # subject is the selector up to the compound carrying :hover. A hover colour alone does
 # not count; a sheet whose cssRules throw (cross-origin) is counted as unreadable and
@@ -335,6 +336,11 @@ FIND_BY_SIGNATURE_JS = r"""
 # nesting) is skipped. Shared by discovery and by crawl-eval's css_hover_screen.py.
 CSS_HOVER_JS = r"""
   const HOVER_PROPS = ['display', 'visibility', 'opacity'];
+  // properties whose url() the browser fetches when the rule starts to apply;
+  // background-image also covers the background shorthand, border-image-source
+  // the border-image shorthand
+  const FETCH_PROPS = ['background-image', 'border-image-source', 'list-style-image', 'cursor', 'content'];
+  const DISCOVERY_PROPS = HOVER_PROPS.concat(['background-image']);
   const cssHoverRules = (root) => {
     const rules = [];
     let sheets = 0, unreadable = 0;
@@ -346,8 +352,8 @@ CSS_HOVER_JS = r"""
         }
         if (rule.selectorText.indexOf(':hover') === -1) continue;
         const st = rule.style;
-        const props = HOVER_PROPS.filter((p) => st.getPropertyValue(p));
-        if (st.getPropertyValue('background-image').indexOf('url(') !== -1) props.push('background-image');
+        const props = HOVER_PROPS.filter((p) => st.getPropertyValue(p))
+          .concat(FETCH_PROPS.filter((p) => st.getPropertyValue(p).indexOf('url(') !== -1));
         if (!props.length) continue;
         for (const sel of rule.selectorText.split(',')) {
           const cut = sel.indexOf(':hover');
@@ -368,9 +374,12 @@ CSS_HOVER_JS = r"""
     }
     return {rules, sheets, unreadable};
   };
+  // discovery keeps to what show/hide and background-image rules mark, as AutoHover does
   const cssHoverTargets = (root) => {
     const found = new Set();
-    for (const r of cssHoverRules(root).rules) (r.subjects || []).forEach((el) => found.add(el));
+    for (const r of cssHoverRules(root).rules) {
+      if (r.props.some((p) => DISCOVERY_PROPS.indexOf(p) !== -1)) (r.subjects || []).forEach((el) => found.add(el));
+    }
     return found;
   };
 """

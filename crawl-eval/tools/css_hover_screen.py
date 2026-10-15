@@ -75,11 +75,17 @@ def screen(browser, url: str) -> dict:
         ctx.close()
 
 
+FETCH_PROPS = {"background-image", "border-image-source", "list-style-image", "cursor", "content"}
+
+
 def summarise(rec: dict) -> dict:
+    """Counts beside the rule list, which is kept: a selection reads the rules."""
     rules = rec.get("rules", [])
-    return {"rules": len(rules),
+    fetch = [r for r in rules if FETCH_PROPS & set(r["props"])]
+    return {"rule_count": len(rules),
             "rules_with_subject": sum(1 for r in rules if r["subjects"]),
-            "rules_with_visible_subject": sum(1 for r in rules if r["visible_subjects"])}
+            "rules_with_visible_subject": sum(1 for r in rules if r["visible_subjects"]),
+            "fetch_rules_with_subject": sum(1 for r in fetch if r["subjects"])}
 
 
 def main() -> int:
@@ -142,7 +148,7 @@ def main() -> int:
                                              "job": "css-screen", "host": h, "worker": n,
                                              "start": start, "end": end, "exit_code": code}) + "\n")
                     print(f"[{finished[0]}/{total}] w{n} {h} {page['id']}: "
-                          f"{rec.get('error') or str(rec['rules']) + ' rules, ' + str(rec['rules_with_subject']) + ' with subject'}",
+                          f"{rec.get('error') or str(rec['rule_count']) + ' rules, ' + str(rec['rules_with_subject']) + ' with subject, ' + str(rec['fetch_rules_with_subject']) + ' fetching'}",
                           flush=True)
             browser.close()
 
@@ -157,10 +163,12 @@ def main() -> int:
     ok = [r for r in recs if "error" not in r]
     summary = {
         "pages": len(pages), "screened": len(ok), "errors": [r["id"] for r in recs if "error" in r],
-        "pages_with_rule": sum(1 for r in ok if r["rules"]),
+        "pages_with_rule": sum(1 for r in ok if r["rule_count"]),
         "pages_with_rule_and_subject": sum(1 for r in ok if r["rules_with_subject"]),
         "pages_with_rule_and_visible_subject": sum(1 for r in ok if r["rules_with_visible_subject"]),
         "hosts_with_rule_and_subject": len({host(r["url"]) for r in ok if r["rules_with_subject"]}),
+        "pages_with_fetch_rule_and_subject": sum(1 for r in ok if r["fetch_rules_with_subject"]),
+        "hosts_with_fetch_rule_and_subject": len({host(r["url"]) for r in ok if r["fetch_rules_with_subject"]}),
         "pages_with_unreadable_sheets": sum(1 for r in ok if r.get("unreadable")),
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
