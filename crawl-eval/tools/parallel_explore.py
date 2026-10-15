@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Explorer-only runs over many pages with several workers (the Tranco study).
+"""Explorer runs over many pages with several workers (the Tranco study), optionally
+followed per page by crawls (the hover evaluation).
 
 Input: a JSON file {"pages": [{"id": ..., "url": ...}, ...]}. Each page is explored with
 the same command eval_run.py uses (both explorer runs, matched to the crawler's browser,
@@ -20,6 +21,13 @@ Timeout: an explorer still running after --job-timeout minutes is killed with it
 (the explorer's own budget is checked only between actions, so a browser call that never
 returns would otherwise hold the run open). The page gets done.json with exit code
 "timeout", so a resume does not retry it.
+
+Crawls: with --crawl, each page is a chain of jobs run in order, back-to-back: the
+explorer, then the listed crawls (none, or <config>-<iso|comb> from eval_run.CONFIGS,
+built with eval_run.crawl_cmd and its bundles, which must match bundles.json in
+--bundles). The per-host rule applies to every job, so a page's chain advances one job
+at a time while other hosts' chains run on the other workers. A crawl still running
+after --crawl-timeout minutes has its container killed and gets exit code "timeout".
 
 Resumable: a page whose explorer/done.json exists is skipped, so an interrupted run is
 continued by running the same command again. On Ctrl-C the running explorers are stopped
@@ -42,7 +50,7 @@ from pathlib import Path
 
 PKG_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PKG_ROOT / "tools"))
-from eval_run import MIN_HOST_GAP, explorer_cmd  # noqa: E402
+from eval_run import ALL, CONFIGS, MIN_HOST_GAP, check_bundles, crawl_cmd, explorer_cmd  # noqa: E402
 
 
 def host(url: str) -> str:
@@ -81,7 +89,9 @@ class Scheduler:
     def take(self) -> dict | None:
         with self.cond:
             while True:
-                if not self.todo or self.stopping:
+                # an empty queue is final only once no job is running: a running page
+                # with jobs left comes back on release
+                if self.stopping or (not self.todo and not self.busy):
                     return None
                 now = time.time()
                 wait = None
@@ -97,10 +107,13 @@ class Scheduler:
                 # nothing ready: sleep until the earliest gap ends, or a host is freed
                 self.cond.wait(timeout=wait if wait is not None else None)
 
-    def release(self, h: str, end: float) -> None:
+    def release(self, h: str, end: float, requeue: dict | None = None) -> None:
+        """Frees the host; a page with jobs left goes to the back of the queue."""
         with self.cond:
             self.busy.discard(h)
             self.last_end[h] = end
+            if requeue is not None:
+                self.todo.append(requeue)
             self.cond.notify_all()
 
 
@@ -142,23 +155,41 @@ def main() -> int:
     ap.add_argument("--min-host-gap", type=float, default=MIN_HOST_GAP)
     ap.add_argument("--reuse", type=Path, action="append", default=[],
                     help="a run directory whose completed results are reused for the same URL")
-    ap.add_argument("--job-timeout", type=float, default=30.0, help="minutes per page")
+    ap.add_argument("--job-timeout", type=float, default=30.0, help="minutes per explorer run")
+    ap.add_argument("--crawl", default="",
+                    help="crawls after the explorer, in order: none and/or <config>-<iso|comb>")
+    ap.add_argument("--bundles", type=Path, help="bundle directory (default <out>/bundles)")
+    ap.add_argument("--behavior-timeout", type=int, default=300, help="crawler --behaviorTimeout")
+    ap.add_argument("--crawl-timeout", type=float, default=15.0, help="minutes per crawl")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
     out = args.out.resolve()
     pages = json.loads(args.pages.read_text())["pages"]
+    crawls = [c for c in args.crawl.split(",") if c]
+    for c in crawls:
+        cfg, _, mode = c.rpartition("-")
+        if c != "none" and (cfg not in CONFIGS or mode not in ("iso", "comb")):
+            raise SystemExit(f"--crawl {c}: expected none or <config>-<iso|comb>")
+    bundles = (args.bundles or out / "bundles").resolve()
+    meta = check_bundles(bundles, [c.rpartition("-")[0] for c in crawls if c != "none"]) \
+        if crawls else None
+    chain = ["explorer"] + crawls
+
+    def pending(p: dict) -> list[str]:
+        return [j for j in chain if not (out / p["id"] / j / "done.json").exists()]
     reused = reuse(pages, out, args.reuse, args.dry_run)
     if reused:
         print(f"{len(reused)} page(s) reused from {', '.join(map(str, args.reuse))}", flush=True)
     reused_ids = {r["id"] for r in reused}
-    todo = [p for p in round_robin(pages) if p["id"] not in reused_ids
-            and not (out / p["id"] / "explorer" / "done.json").exists()]
-    print(f"{len(pages)} page(s), {len(todo)} to run, {args.workers} worker(s), "
-          f"{args.min_host_gap:.0f}s per host", flush=True)
+    todo = [p for p in round_robin(pages) if pending(p)]
+    jobs_left = sum(len(pending(p)) for p in todo)
+    print(f"{len(pages)} page(s), {len(todo)} with jobs to run ({jobs_left} job(s): "
+          f"{', '.join(chain)}), {args.workers} worker(s), {args.min_host_gap:.0f}s per host"
+          + (f"; bundles from browsertrix-behaviors {meta['commit']}" if meta else ""), flush=True)
     if args.dry_run:
         for p in todo:
-            print(f"  {host(p['url']):30} {p['id']}")
+            print(f"  {host(p['url']):30} {p['id']}: {', '.join(pending(p))}")
         return 0
 
     last_end: dict[str, float] = {}
@@ -171,47 +202,66 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     sched = Scheduler(todo, last_end, args.min_host_gap)
     log_lock = threading.Lock()
-    total = len(todo)
+    total = jobs_left
     finished = [0]
     running: dict[int, subprocess.Popen] = {}
+    containers: dict[int, str] = {}
+
+    def job_cmd(page: dict, name: str, job_dir: Path, n: int) -> list[str]:
+        if name == "explorer":
+            return explorer_cmd({"page": page}, job_dir)
+        cfg, _, mode = name.rpartition("-")
+        job = {"page": page, "cfg": None if name == "none" else cfg,
+               "behaviors": "" if name == "none" else ("autoclick" if mode == "iso" else ALL),
+               "behavior_timeout": args.behavior_timeout}
+        cmd = crawl_cmd(job, job_dir, bundles)
+        # named, so a timed-out crawl can be killed: killing `docker run` leaves it running
+        containers[n] = f"pe-{os.getpid()}-{n}-{int(time.time())}"
+        return cmd[:2] + ["--name", containers[n]] + cmd[2:]
 
     def worker(n: int) -> None:
         while (page := sched.take()) is not None:
             h = host(page["url"])
-            job_dir = out / page["id"] / "explorer"
+            name = pending(page)[0]
+            job_dir = out / page["id"] / name
             if job_dir.exists():
                 subprocess.run(["rm", "-rf", str(job_dir)], check=True)
             job_dir.mkdir(parents=True)
-            cmd = explorer_cmd({"page": page}, job_dir)
+            cmd = job_cmd(page, name, job_dir, n)
             (job_dir / "command.json").write_text(json.dumps(cmd, indent=2))
             start = time.time()
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                     start_new_session=True)
             running[n] = proc
+            timeout = args.job_timeout if name == "explorer" else args.crawl_timeout
             try:
-                stdout, stderr = proc.communicate(timeout=args.job_timeout * 60)
+                stdout, stderr = proc.communicate(timeout=timeout * 60)
                 code = proc.returncode
             except subprocess.TimeoutExpired:
+                if name != "explorer":
+                    subprocess.run(["docker", "kill", containers[n]], capture_output=True)
                 os.killpg(proc.pid, signal.SIGKILL)     # the explorer and its browser
                 stdout, stderr = proc.communicate()
                 code = "timeout"
             del running[n]
+            containers.pop(n, None)
             end = time.time()
             (job_dir / "stdout.txt").write_text(stdout + "\n--- stderr ---\n" + stderr)
-            sched.release(h, end)
             interrupted = sched.stopping and code != "timeout"
             if not interrupted:
                 (job_dir / "done.json").write_text(json.dumps({"exit_code": code}))
+            more = not interrupted and len(pending(page)) > 0
+            sched.release(h, end, page if more else None)
             with log_lock:
                 finished[0] += 1
                 # an interrupted job is logged too, so its host's gap holds on resume,
                 # but gets no done.json, so it runs again
                 with (out / "jobs.jsonl").open("a") as fh:
-                    fh.write(json.dumps({"page": page["id"], "url": page["url"], "job": "explorer",
+                    fh.write(json.dumps({"page": page["id"], "url": page["url"], "job": name,
                                          "host": h, "worker": n, "start": start, "end": end,
                                          "exit_code": "interrupted" if interrupted
                                          else code}) + "\n")
-                print(f"[{finished[0]}/{total}] w{n} {h} {page['id']}: "
+                print(f"[{finished[0]}/{total}] w{n} {h} {page['id']} {name}: "
                       f"{'interrupted' if interrupted else f'exit {code}'} "
                       f"in {end - start:.0f}s", flush=True)
             if interrupted:
@@ -234,6 +284,8 @@ def main() -> int:
         sched.stop()
         for proc in list(running.values()):
             os.killpg(proc.pid, signal.SIGTERM)    # the explorer and its browser
+        for name in list(containers.values()):
+            subprocess.run(["docker", "kill", name], capture_output=True)
         for t in threads:
             t.join()
         return 130
