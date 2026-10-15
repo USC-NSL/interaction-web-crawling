@@ -280,8 +280,12 @@ def main() -> int:
         while any(t.is_alive() for t in threads):
             time.sleep(0.5)
     except KeyboardInterrupt:
-        print("interrupted: stopping running explorers; run the same command to resume", flush=True)
+        # a second signal while stopping must not kill this thread before the workers
+        # know: they would carry on, and record killed jobs as finished
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
         sched.stop()
+        print("interrupted: stopping running jobs; run the same command to resume", flush=True)
         for proc in list(running.values()):
             os.killpg(proc.pid, signal.SIGTERM)    # the explorer and its browser
         for name in list(containers.values()):
