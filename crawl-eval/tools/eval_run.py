@@ -55,6 +55,8 @@ CONFIGS = {
     "AHS": ("AHS.js", None, ("hover",)),
     "AHR": ("AHR.js", None, ("hover",)),
     "SEQ": ("SEQ.js", None, ("hover",)),
+    # control: AutoHover's real-mode scrolling and waits without moving the pointer
+    "AHC": ("AHC.js", None, ("hover",)),
 }
 
 

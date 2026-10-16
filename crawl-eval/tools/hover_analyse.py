@@ -22,6 +22,10 @@ same with autoplay, autofetch and autoscroll).
 5. By page source (pages.json tags), and the pages with no hover pool (negatives, hover
    artifacts, menu-only): hovers made, time, and anything new fetched.
 
+6. Where AHC-iso ran (the scroll-only control: AHR's scrolling, pauses and waits per
+   candidate without moving the pointer): its hover-pool recall, and the share of
+   AHR's recovered hover-pool resources it also recovers.
+
 Writes <run>/report.json and <run>/report.md.
 """
 
@@ -40,7 +44,7 @@ from pilot_analyse import PostHocBlocker, crawl_log, iou  # noqa: E402
 from rescreen_analyse import analyse as explorer_analyse, explorer_result  # noqa: E402
 
 CLASSES = ("content", "functional", "presentational")
-CONFIGS = ("RC-iso", "AHS-iso", "AHR-iso", "SEQ-iso", "SEQ-comb")
+CONFIGS = ("RC-iso", "AHS-iso", "AHR-iso", "SEQ-iso", "SEQ-comb", "AHC-iso")
 TARGETS = ("css", "listener", "native")
 HOVERED = re.compile(r"^Hovered \((\w+)\) in (\d+)ms \[waited (\d+)ms\]")
 DONE = re.compile(r"^AutoHover done in (\d+)ms: (\d+) hovers \((\d+) real, (\d+) synthetic\), "
@@ -170,6 +174,7 @@ def main() -> int:
                 "autohover": autohover_log(log) if cfg != "RC-iso" else None,
                 "clicks": rc["clicks_total"], "safety": safety_log(log),
                 "new_outside_pools": len(new - set(hover) - set(click)),
+                "hover_found": sorted(new & set(hover)),
             }
         entry["configs"] = configs
 
@@ -193,6 +198,21 @@ def main() -> int:
         return out
 
     report["summary"] = {"all": recall_table(scored)}
+
+    # the scroll-only control against real hover, on the pages it ran on
+    overlap = {"pages": 0, "ahr_found": 0, "also_ahc": 0, "ahc_found": 0, "per_page": {}}
+    for pid, e in scored.items():
+        c = e["configs"]
+        if c.get("AHC-iso", {}).get("exit_code") != 0 or c.get("AHR-iso", {}).get("exit_code") != 0:
+            continue
+        ahr, ahc = set(c["AHR-iso"]["hover_found"]), set(c["AHC-iso"]["hover_found"])
+        overlap["pages"] += 1
+        overlap["ahr_found"] += len(ahr)
+        overlap["also_ahc"] += len(ahr & ahc)
+        overlap["ahc_found"] += len(ahc)
+        overlap["per_page"][pid] = {"ahr": len(ahr), "ahc": len(ahc), "both": len(ahr & ahc),
+                                    "ahc_only": len(ahc - ahr)}
+    report["summary"]["scroll_control"] = overlap
     tags = sorted({s for e in scored.values() for s in e["sources"]})
     report["summary"]["by_source"] = {t: recall_table({k: e for k, e in scored.items() if t in e["sources"]})
                                       for t in tags}
